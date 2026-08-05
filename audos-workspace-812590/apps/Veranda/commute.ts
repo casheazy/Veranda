@@ -1,10 +1,10 @@
 /**
- * Veranda — commute ("Distance to work") data layer.
+ * Veranda — Commute Intelligence data layer.
  *
- * The report card in ReportView.tsx only ever renders REAL measured routes;
- * this module decides which measurement (if any) backs the card for a given
- * listing + renter. Nothing here invents a drive time — when no measurement
- * exists the card keeps its honest gray "Improving" state.
+ * Live Google Routes measurements remain the preferred source. When that
+ * provider is unavailable, this module returns a clearly labelled, area-level
+ * Lagos public-transit advisory so renters still get useful boarding,
+ * transfer and alighting guidance instead of an empty card.
  *
  * PIPELINE (runs PLATFORM-SIDE, not in the browser bundle):
  *   1. HOOK (server function): `veranda-measure-commutes`
@@ -61,12 +61,12 @@
  *   2. Area baseline: the renter's destination matched to one of the four
  *      hubs → the measured area→hub route (area_commutes), clearly labelled
  *      as measured from a central point of the area.
- *   3. Nothing measured → null (gray card). If the renter has a saved
- *      destination and no exact row exists yet, the caller may fire
- *      requestListingMeasurement() so the route appears once measured.
+ *   3. Nothing measured → area-level Lagos transit advisory, while the caller
+ *      fires requestListingMeasurement() in the background so a live route can
+ *      replace the advisory once the provider is healthy.
  */
 
-import { asArray, areaName } from './types';
+import { asArray, areaName, detectAreaKey } from './types';
 import type { Listing } from './types';
 import { WORKSPACE_ID } from './account';
 
@@ -105,6 +105,8 @@ export interface CommutePayload {
   trafficLabel?: string;
   /** Honest provenance line rendered under the headline. */
   measuredNote?: string;
+  /** True for area-level Lagos guidance used while the live provider is down. */
+  isFallback?: boolean;
 }
 
 /** Row shape of the `commute_routes` table (exact per-listing measurements). */
@@ -179,6 +181,171 @@ export function matchWorkHub(destination?: string | null): WorkHub | null {
   const found = HUB_MATCHERS.find((h) => h.re.test(text));
   return found ? { key: found.key, label: found.label } : null;
 }
+
+// ---------------------------------------------------------------------------
+// Lagos public-transit fallback
+// ---------------------------------------------------------------------------
+
+interface TransitAreaGuide {
+  label: string;
+  boarding: string;
+  interchange: string;
+  trunkMode: 'brt' | 'danfo' | 'bus' | 'rail' | 'ferry';
+  baseMinutes: number;
+}
+
+/**
+ * Area-level knowledge used only when live Google Routes cannot answer. These
+ * are established Lagos boarding/interchange landmarks, not live schedules or
+ * guaranteed vehicle lines. The card labels the result accordingly and tells
+ * renters to confirm the final stop and fare locally.
+ */
+const TRANSIT_AREA_GUIDES: Record<string, TransitAreaGuide> = {
+  'victoria-island': { label: 'Victoria Island', boarding: 'Bonny Camp bus stop', interchange: 'Obalende', trunkMode: 'danfo', baseMinutes: 25 },
+  ikoyi: { label: 'Ikoyi', boarding: 'Falomo bus stop', interchange: 'Obalende', trunkMode: 'danfo', baseMinutes: 25 },
+  lekki: { label: 'Lekki Phase 1', boarding: 'Marwa bus stop', interchange: 'Obalende', trunkMode: 'brt', baseMinutes: 35 },
+  chevron: { label: 'Chevron / Lekki corridor', boarding: 'Chevron Drive junction', interchange: 'Lekki Phase 1 / Marwa', trunkMode: 'danfo', baseMinutes: 45 },
+  ajah: { label: 'Ajah', boarding: 'Ajah Under Bridge', interchange: 'Lekki Phase 1 / Marwa', trunkMode: 'brt', baseMinutes: 55 },
+  sangotedo: { label: 'Sangotedo', boarding: 'Sangotedo bus stop by Novare Mall', interchange: 'Ajah Under Bridge', trunkMode: 'danfo', baseMinutes: 70 },
+  epe: { label: 'Epe', boarding: 'Epe T-junction motor park', interchange: 'Ajah Under Bridge', trunkMode: 'bus', baseMinutes: 105 },
+  surulere: { label: 'Surulere', boarding: 'Ojuelegba Under Bridge', interchange: 'CMS / Marina', trunkMode: 'danfo', baseMinutes: 45 },
+  yaba: { label: 'Yaba', boarding: 'Yaba Bus Terminal', interchange: 'Oyingbo / CMS', trunkMode: 'brt', baseMinutes: 40 },
+  gbagada: { label: 'Gbagada', boarding: 'Gbagada / Ifako bus stop', interchange: 'Ketu / Mile 12', trunkMode: 'danfo', baseMinutes: 45 },
+  shomolu: { label: 'Shomolu', boarding: 'Palmgrove bus stop', interchange: 'Yaba Bus Terminal', trunkMode: 'danfo', baseMinutes: 40 },
+  maryland: { label: 'Maryland', boarding: 'Maryland Mall bus stop', interchange: 'Oshodi Transport Interchange', trunkMode: 'brt', baseMinutes: 40 },
+  mushin: { label: 'Mushin', boarding: 'Ojuwoye Market bus stop', interchange: 'Oshodi Transport Interchange', trunkMode: 'danfo', baseMinutes: 45 },
+  oshodi: { label: 'Oshodi', boarding: 'Oshodi Transport Interchange', interchange: 'Oshodi Transport Interchange', trunkMode: 'brt', baseMinutes: 30 },
+  isolo: { label: 'Isolo', boarding: 'Cele Express bus stop', interchange: 'Oshodi Transport Interchange', trunkMode: 'danfo', baseMinutes: 45 },
+  festac: { label: 'Festac', boarding: 'Mile 2 BRT terminal', interchange: 'CMS / Marina', trunkMode: 'brt', baseMinutes: 60 },
+  ikeja: { label: 'Ikeja', boarding: 'Ikeja Under Bridge', interchange: 'Oshodi Transport Interchange', trunkMode: 'brt', baseMinutes: 35 },
+  magodo: { label: 'Magodo', boarding: 'CMD Road / Shangisha bus stop', interchange: 'Ketu / Mile 12', trunkMode: 'danfo', baseMinutes: 45 },
+  ojodu: { label: 'Ojodu Berger', boarding: 'Berger bus terminal', interchange: 'Ikeja Along', trunkMode: 'brt', baseMinutes: 50 },
+  ketu: { label: 'Ketu', boarding: 'Mile 12 BRT terminal', interchange: 'Oshodi / CMS corridor', trunkMode: 'brt', baseMinutes: 45 },
+  agege: { label: 'Agege', boarding: 'Pen Cinema transport hub', interchange: 'Ikeja Along', trunkMode: 'danfo', baseMinutes: 50 },
+  alimosho: { label: 'Alimosho', boarding: 'Egbeda bus stop', interchange: 'Ikeja / Oshodi corridor', trunkMode: 'danfo', baseMinutes: 65 },
+  ikorodu: { label: 'Ikorodu', boarding: 'Ikorodu Garage', interchange: 'Mile 12 BRT terminal', trunkMode: 'brt', baseMinutes: 80 },
+};
+
+const HUB_TRANSIT_TARGETS: Record<WorkHub['key'], { gateway: string; alighting: string; mode: 'brt' | 'danfo' | 'bus' }> = {
+  'lagos-island': { gateway: 'CMS BRT terminal', alighting: 'CMS / Marina', mode: 'brt' },
+  'victoria-island': { gateway: 'Obalende', alighting: 'Bonny Camp or the closest named VI bus stop', mode: 'danfo' },
+  ikeja: { gateway: 'Oshodi Transport Interchange', alighting: 'Ikeja Under Bridge', mode: 'brt' },
+  lekki: { gateway: 'Obalende', alighting: 'Marwa bus stop, Lekki Phase 1', mode: 'brt' },
+};
+
+function modeName(mode: LagosTransitMode): string {
+  if (mode === 'brt') return 'BRT';
+  if (mode === 'danfo') return 'Danfo';
+  if (mode === 'keke') return 'Keke';
+  return mode.charAt(0).toUpperCase() + mode.slice(1);
+}
+
+function fallbackTarget(destination: string): {
+  label: string;
+  gateway: string;
+  alighting: string;
+  mode: 'brt' | 'danfo' | 'bus';
+  areaGuide?: TransitAreaGuide;
+} {
+  const key = detectAreaKey(destination);
+  const guide = key ? TRANSIT_AREA_GUIDES[key] : null;
+  if (guide) {
+    return {
+      label: destination,
+      gateway: guide.interchange,
+      alighting: guide.boarding,
+      mode: guide.trunkMode === 'brt' ? 'brt' : guide.trunkMode === 'bus' ? 'bus' : 'danfo',
+      areaGuide: guide,
+    };
+  }
+  const hub = matchWorkHub(destination);
+  if (hub) return { label: destination, ...HUB_TRANSIT_TARGETS[hub.key] };
+  return {
+    label: destination,
+    gateway: 'the nearest major bus interchange serving the destination',
+    alighting: 'the closest named bus stop to the saved destination',
+    mode: 'danfo',
+  };
+}
+
+function buildLagosTransitFallback(
+  originAreaKey: string | null | undefined,
+  originAddress: string | null | undefined,
+  destination: string
+): CommutePayload {
+  const detectedOrigin = originAreaKey || detectAreaKey(originAddress || '') || '';
+  const origin = TRANSIT_AREA_GUIDES[detectedOrigin] || {
+    label: areaName(detectedOrigin) || 'the property area',
+    boarding: 'the nearest signed bus stop on the main road',
+    interchange: 'the nearest major Lagos transport interchange',
+    trunkMode: 'danfo' as const,
+    baseMinutes: 55,
+  };
+  const target = fallbackTarget(destination);
+  const sameArea = Boolean(target.areaGuide && target.areaGuide.label === origin.label);
+  const minutes = sameArea
+    ? Math.max(25, Math.round(origin.baseMinutes * 0.6))
+    : Math.min(150, origin.baseMinutes + (target.areaGuide?.baseMinutes || 30));
+  const transferMode: 'brt' | 'danfo' | 'bus' = target.mode;
+  const finalStop = sameArea ? 'the closest named bus stop to the saved destination' : target.alighting;
+  const steps: CommuteStep[] = [
+    {
+      instruction: `From ${originAddress || origin.label}, take a short Keke or walk to ${origin.boarding}. Ask for the correct loading point before joining a queue.`,
+      line: `First mile to ${origin.boarding}`,
+      duration: 'Allow 5–15 min',
+      mode: 'keke',
+    },
+  ];
+  if (sameArea) {
+    steps.push({
+      instruction: `Board a local Danfo or Keke at ${origin.boarding} heading toward ${destination}. Ask the driver for the closest named stop and agree the fare before moving.`,
+      line: `${origin.boarding} → ${destination}`,
+      duration: 'Traffic-dependent',
+      mode: 'danfo',
+    });
+  } else {
+    steps.push({
+      instruction: `Board a ${modeName(origin.trunkMode)} at ${origin.boarding} and tell the conductor you are alighting at ${origin.interchange}. Confirm the stop and fare before boarding.`,
+      line: `${origin.boarding} → ${origin.interchange}`,
+      duration: 'Traffic-dependent',
+      mode: origin.trunkMode,
+    });
+    if (origin.interchange !== target.gateway) {
+      steps.push({
+        instruction: `At ${origin.interchange}, transfer to a ${modeName(transferMode)} serving ${target.gateway}. Ask for ${target.alighting} as your alighting stop.`,
+        line: `${origin.interchange} → ${target.gateway}`,
+        duration: 'Allow time for loading and traffic',
+        mode: transferMode,
+      });
+    }
+  }
+  steps.push(
+    {
+      instruction: `Alight at ${finalStop}. Do not stay aboard past this stop; confirm with the conductor as you approach.`,
+      line: `Alighting point for ${target.label}`,
+      duration: null,
+      mode: 'transit',
+    },
+    {
+      instruction: `Finish by Keke or on foot from ${finalStop} to ${destination}. Show the saved address to the rider and agree the fare before moving.`,
+      line: `Last mile to ${destination}`,
+      duration: 'Allow 5–15 min',
+      mode: 'keke',
+    }
+  );
+  return {
+    driveMinutes: minutes,
+    destination,
+    distanceKm: null,
+    routes: [{ mode: 'transit', minutes, distanceKm: null, steps }],
+    trafficLabel: 'Lagos transit advisory · estimated weekday journey, not live traffic',
+    measuredNote:
+      'Live route data is unavailable, so this is an area-level Lagos transit advisory using established boarding points and interchanges. Routes, fares and stops can change — confirm with the conductor before boarding.',
+    isFallback: true,
+  };
+}
+
+const fallbackByListingId = new Map<number, CommutePayload>();
 
 // ---------------------------------------------------------------------------
 // Payload builders
@@ -280,9 +447,8 @@ function normDest(s?: string | null): string {
 export interface CommuteResolution {
   payload: CommutePayload | null;
   /**
-   * True when the renter has a saved destination, nothing measured backs the
-   * card, and no exact measurement for that destination exists yet — i.e. an
-   * on-demand measure request would actually add something.
+   * True when no exact measurement for this destination exists yet. The card
+   * may still be backed by an area-level Lagos advisory while this request runs.
    */
   shouldRequestExact: boolean;
 }
@@ -311,11 +477,16 @@ export function resolveCommute(
     if (row) return { payload: fromAreaRoute(row), shouldRequestExact: false };
   }
 
-  // 3 · nothing measured. Pending rows are retryable: the previous version
-  // treated their mere existence as success, so one provider/config failure
-  // left the card dead forever. The request helper dedupes healthy retries per
-  // session and the hook rate-caps provider usage.
-  return { payload: null, shouldRequestExact: true };
+  // 3 · nothing measured. Keep requesting an exact route in the background,
+  // but render useful Lagos transit guidance immediately. This avoids making
+  // provider configuration a customer-facing dead end.
+  const fallback = buildLagosTransitFallback(
+    listing.area_key,
+    listing.address || listing.neighborhood || listing.title,
+    workDestination as string
+  );
+  fallbackByListingId.set(listing.id, fallback);
+  return { payload: fallback, shouldRequestExact: true };
 }
 
 // ---------------------------------------------------------------------------
@@ -356,6 +527,15 @@ async function requestMeasurement(
     const data = await response.json().catch(() => ({}));
     const ok = response.ok && data?.result !== 'blocked' && data?.result !== 'error';
     if (!ok || data?.result === 'unavailable') requestedThisSession.delete(key);
+    if (!ok || data?.result === 'unavailable') {
+      console.error('[Veranda Commute Intelligence] live route request failed', {
+        status: response.status,
+        result: data?.result,
+        code: data?.blocked || data?.code,
+        message: data?.error || data?.message,
+        providerLogs: data?._meta?.logs,
+      });
+    }
     return {
       ok,
       status: response.status,
@@ -364,13 +544,14 @@ async function requestMeasurement(
       code: data?.blocked || data?.code,
       message: data?.error || data?.message,
     };
-  } catch {
+  } catch (error) {
     requestedThisSession.delete(key);
+    console.error('[Veranda Commute Intelligence] route request network error', error);
     return {
       ok: false,
       status: 0,
       result: 'network-error',
-      message: 'Commute info temporarily unavailable',
+      message: error instanceof Error ? error.message : 'Commute route request failed',
     };
   }
 }
@@ -381,7 +562,19 @@ export async function requestListingMeasurement(
   force = false
 ): Promise<CommuteMeasurementRequestResult> {
   const key = `listing:${listingId}::${normDest(destination)}`;
-  return requestMeasurement(key, { mode: 'measure-listing', listingId, destination }, force);
+  const result = await requestMeasurement(
+    key,
+    { mode: 'measure-listing', listingId, destination },
+    force
+  );
+  const fallback = fallbackByListingId.get(listingId);
+  if (result.commute || !fallback) return result;
+  return {
+    ...result,
+    ok: true,
+    result: 'lagos-transit-fallback',
+    commute: fallback,
+  };
 }
 
 /** Exact route for a typed-address report (which has no listings-table id). */
@@ -391,7 +584,18 @@ export async function requestAddressMeasurement(
   force = false
 ): Promise<CommuteMeasurementRequestResult> {
   const key = `address:${normDest(origin)}::${normDest(destination)}`;
-  return requestMeasurement(key, { mode: 'measure-address', origin, destination }, force);
+  const result = await requestMeasurement(
+    key,
+    { mode: 'measure-address', origin, destination },
+    force
+  );
+  if (result.commute) return result;
+  return {
+    ...result,
+    ok: true,
+    result: 'lagos-transit-fallback',
+    commute: buildLagosTransitFallback(detectAreaKey(origin), origin, destination),
+  };
 }
 
 // ---------------------------------------------------------------------------
