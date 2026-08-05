@@ -1,0 +1,1278 @@
+/**
+ * Veranda — Verification Report (the unlocked report itself).
+ *
+ * Design contract:
+ * - Location map first, then five stacked dimension cards (flood, power,
+ *   distance-to-work, network, security), then sources + a muted disclaimer.
+ *   This is an invariant: no report variant may omit a dimension, even when
+ *   its lookup is unavailable.
+ * - Every card carries a plain-language one-line headline and a color-coded
+ *   pill: Good (green) / Fair (amber) / Watch out (red) / Improving (gray).
+ *   "Improving" is used whenever confidence in the data is low — missing data
+ *   must read as "not measured yet", never as a danger signal.
+ * - Distance to work shows a real step-by-step commute once the renter has a
+ *   saved workplace: a bold "~X min by car · ~Y min by bus" headline, a
+ *   collapsible By-car section (turn-by-turn steps + total distance, labelled
+ *   typical Lagos traffic) and a By-bus section that is never hidden (gray
+ *   "Public transit route not available" line when no transit data exists).
+ *   The badge comes from the car time: <30 min Good, 30–60 Fair, >60 Watch
+ *   out; gray "Add workplace" before a workplace is saved. Only REAL measured
+ *   routes are shown — no straight-line guesses; unmeasured routes show gray
+ *   "Commute data unavailable". A "Change workplace" link updates the
+ *   account-level workplace every report reads (a lookup, not per-report).
+ * - Network coverage is a per-carrier breakdown (MTN / Airtel / Glo /
+ *   9mobile). Tiers come from a published-coverage-reports baseline and are
+ *   superseded per carrier by live OpenCelliD cell-site lookups as those
+ *   land (see coverage.ts) — each row names its source, and nothing is
+ *   presented as real-time or independently verified. A gray "Data
+ *   unavailable" row appears only when a carrier has neither.
+ * - Security is NEVER scored: always an "Improving" badge, plus any security
+ *   features the lister advertised, clearly labelled as unverified.
+ *
+ * Unlock gating lives in ReportGate.tsx — this component assumes the renter
+ * already has access.
+ */
+import { useMemo, useState } from 'react';
+import type { ComponentType, ReactNode } from 'react';
+import {
+  Droplets,
+  Zap,
+  Shield,
+  ExternalLink,
+  BadgeCheck,
+  Users,
+  Info,
+  Wifi,
+  Car,
+  Bus,
+  Briefcase,
+  ChevronDown,
+  Loader2,
+  PlusCircle,
+} from 'lucide-react';
+import { tw, typography } from '../../lib/colors';
+import {
+  AreaKey,
+  AreaProfile,
+  FloodClass,
+  FloodZone,
+  Listing,
+  SourceLink,
+  TenantReport,
+  areaName,
+  asArray,
+} from './types';
+import { CoverageResolution, CoverageTier, resolveCoverage } from './coverage';
+
+// ---------------------------------------------------------------------------
+// Badge pills — the four confidence tones of the report
+// ---------------------------------------------------------------------------
+
+export type BadgeTone = 'good' | 'fair' | 'watch' | 'improving';
+
+const TONE_META: Record<BadgeTone, { label: string; cls: string }> = {
+  good: {
+    label: 'Good',
+    cls: 'bg-[var(--space-semantic-success-100)] text-[var(--space-semantic-success-700)]',
+  },
+  fair: {
+    label: 'Fair',
+    cls: 'bg-[var(--space-semantic-warning-100)] text-[var(--space-semantic-warning-700)]',
+  },
+  watch: {
+    label: 'Watch out',
+    cls: 'bg-[var(--space-semantic-danger-100)] text-[var(--space-semantic-danger-700)]',
+  },
+  improving: {
+    label: 'Improving',
+    cls: 'bg-[var(--space-surface-muted)] text-[var(--space-text-secondary)] border border-[var(--space-border-default)]',
+  },
+};
+
+function Pill({ tone, label }: { tone: BadgeTone; label?: string }) {
+  return (
+    <span
+      className={`shrink-0 px-2.5 py-0.5 rounded-full text-[11px] ${typography.weight.semibold} ${TONE_META[tone].cls}`}
+      data-testid={`pill-${tone}`}
+    >
+      {label || TONE_META[tone].label}
+    </span>
+  );
+}
+
+const FLOOD_CLASS_META: Record<FloodClass, { label: string; badge: string; fill: string }> = {
+  high: { label: 'High risk', badge: `${tw.badge.default} ${tw.badge.danger}`, fill: 'var(--space-semantic-danger)' },
+  moderate: { label: 'Moderate', badge: `${tw.badge.default} ${tw.badge.warning}`, fill: 'var(--space-semantic-warning)' },
+  low: { label: 'Low risk', badge: `${tw.badge.default} ${tw.badge.success}`, fill: 'var(--space-semantic-success)' },
+};
+
+const SEVERITY_META: Record<string, { label: string; badge: string }> = {
+  none: { label: 'No flooding', badge: `${tw.badge.default} ${tw.badge.success}` },
+  ankle: { label: 'Ankle-deep', badge: `${tw.badge.default} ${tw.badge.warning}` },
+  knee: { label: 'Knee-deep', badge: `${tw.badge.default} ${tw.badge.warning}` },
+  waist: { label: 'Waist-deep', badge: `${tw.badge.default} ${tw.badge.danger}` },
+  severe: { label: 'Severe', badge: `${tw.badge.default} ${tw.badge.danger}` },
+};
+
+const SOURCE_META: Record<string, string> = {
+  founder: 'Veranda-verified',
+  tenant: 'Tenant report',
+  social: 'Social evidence',
+  seed: 'Seed example — pending verification',
+};
+
+/** "July 2025 rains · Tenant report · Tunde A." — skips whatever is missing. */
+function sourceLine(r: TenantReport, when?: string | null): string {
+  return [when, SOURCE_META[r.source_type || 'tenant'] || 'Tenant report', r.reporter_name]
+    .filter(Boolean)
+    .join(' · ');
+}
+
+function parseFloodClass(value?: string | null): FloodClass {
+  if (value === 'high' || value === 'moderate' || value === 'low') return value;
+  return 'moderate';
+}
+
+function firstSentence(text?: string | null): string | null {
+  if (!text) return null;
+  const match = text.match(/^[^.!?]+[.!?]/);
+  return match ? match[0].trim() : text.trim();
+}
+
+// ---------------------------------------------------------------------------
+// Plain-language derivations from the verified lookups
+// ---------------------------------------------------------------------------
+
+function floodPresentation(profile?: AreaProfile): { tone: BadgeTone; headline: string; detail: string | null } {
+  if (!profile?.flood_zone_class) {
+    return {
+      tone: 'improving',
+      headline: 'Flood picture is still building',
+      detail:
+        'The flood lookup for this address has not landed yet. Missing data here means "not measured yet" — not safe, and not dangerous.',
+    };
+  }
+  const cls = parseFloodClass(profile.flood_zone_class);
+  const headline =
+    cls === 'low'
+      ? 'Low flood risk area'
+      : cls === 'moderate'
+        ? 'Some streets flood in heavy rain'
+        : 'Flood-prone area — check the exact street';
+  const tone: BadgeTone = cls === 'low' ? 'good' : cls === 'moderate' ? 'fair' : 'watch';
+  return { tone, headline, detail: firstSentence(profile.flood_summary) || profile.flood_zone_label || null };
+}
+
+function powerPresentation(
+  profile: AreaProfile | undefined,
+  tenantAvgHours: number | null,
+  tenantReportCount: number
+): { tone: BadgeTone; headline: string; detail: string | null } {
+  const band = (profile?.disco_band || '').toUpperCase() || null;
+  if (!band) {
+    return {
+      tone: 'improving',
+      headline: 'Power picture is still building',
+      detail:
+        'The official tariff-band lookup for this address has not landed yet — it will appear here as soon as it does.',
+    };
+  }
+  const BAND_MAP: Record<string, { tone: BadgeTone; headline: string }> = {
+    A: { tone: 'good', headline: 'Reliable grid power' },
+    B: { tone: 'good', headline: 'Solid grid power most of the day' },
+    C: { tone: 'fair', headline: 'Grid power about half the day' },
+    D: { tone: 'watch', headline: 'Weak grid supply — budget for backup' },
+    E: { tone: 'watch', headline: 'Very weak grid supply — budget for backup' },
+  };
+  const meta = BAND_MAP[band] || { tone: 'improving' as BadgeTone, headline: 'Power picture is still building' };
+  const parts: string[] = [];
+  if (profile?.disco_name) parts.push(profile.disco_name);
+  if (profile?.band_hours_min != null && profile?.tariff_ngn_kwh != null) {
+    parts.push(
+      `committed minimum ${profile.band_hours_min} hours a day at about ₦${Number(profile.tariff_ngn_kwh).toLocaleString()}/kWh`
+    );
+  } else if (profile?.band_hours_min != null) {
+    parts.push(`committed minimum ${profile.band_hours_min} hours of supply a day`);
+  }
+  let detail = parts.length > 0 ? `${parts.join(' — ')}.` : null;
+  if (tenantAvgHours != null) {
+    detail = `${detail ? `${detail} ` : ''}Tenants on the ground report ~${tenantAvgHours} hrs/day, based on ${tenantReportCount} tenant ${tenantReportCount === 1 ? 'report' : 'reports'}.`;
+  }
+  return { ...meta, detail };
+}
+
+// ---------------------------------------------------------------------------
+// Commute data (renders richly when measured route data exists; honest
+// gray state when not — never a straight-line guess)
+// ---------------------------------------------------------------------------
+
+interface CommuteStep {
+  instruction: string;
+  line?: string | null;
+  distance?: string | null;
+  duration?: string | null;
+}
+
+interface CommuteRoute {
+  mode: string; // 'driving' | 'transit'
+  minutes?: number | null;
+  steps?: CommuteStep[] | null;
+}
+
+interface CommuteInfo {
+  driveMinutes: number;
+  destination?: string | null;
+  routes: CommuteRoute[];
+  /** e.g. 'typical weekday-morning traffic' — set by the measurement pipeline. */
+  trafficLabel?: string | null;
+  /** Honest provenance line (what was measured, from where, when). */
+  measuredNote?: string | null;
+}
+
+/**
+ * Commute data arrives as a `commute` json payload attached to the listing —
+ * an exact measured route or an area→hub baseline picked by resolveCommute()
+ * (apps/Veranda/commute.ts, fed by the veranda-measure-commutes hook) — with
+ * the area profile row as a fallback. When nothing measured exists this
+ * returns null and the card renders the honest "Improving" state — never a
+ * straight-line guess.
+ */
+function parseCommute(listing?: Listing | null, profile?: AreaProfile): CommuteInfo | null {
+  const raw = (listing as { commute?: unknown } | null | undefined)?.commute ??
+    (profile as unknown as { commute?: unknown } | undefined)?.commute;
+  if (!raw) return null;
+  let obj: any = raw;
+  if (typeof raw === 'string') {
+    try {
+      obj = JSON.parse(raw);
+    } catch {
+      return null;
+    }
+  }
+  if (!obj || typeof obj !== 'object') return null;
+  const routes: CommuteRoute[] = Array.isArray(obj.routes)
+    ? obj.routes.filter((r: any) => r && typeof r.mode === 'string')
+    : [];
+  const driving = routes.find((r) => r.mode === 'driving');
+  const driveMinutes =
+    typeof obj.driveMinutes === 'number'
+      ? obj.driveMinutes
+      : typeof driving?.minutes === 'number'
+        ? driving.minutes
+        : null;
+  if (driveMinutes == null) return null;
+  return {
+    driveMinutes,
+    destination: typeof obj.destination === 'string' ? obj.destination : null,
+    routes,
+    trafficLabel: typeof obj.trafficLabel === 'string' ? obj.trafficLabel : null,
+    measuredNote: typeof obj.measuredNote === 'string' ? obj.measuredNote : null,
+  };
+}
+
+/** Badge tone from the car commute: <30 min Good, 30–60 Fair, >60 Watch out. */
+function commuteTone(driveMinutes: number): BadgeTone {
+  if (driveMinutes < 30) return 'good';
+  if (driveMinutes <= 60) return 'fair';
+  return 'watch';
+}
+
+function parseDistanceKm(text?: string | null): number | null {
+  if (!text) return null;
+  const m = text.replace(/,/g, '').match(/([\d.]+)\s*(km|m)\b/i);
+  if (!m) return null;
+  const value = parseFloat(m[1]);
+  if (isNaN(value)) return null;
+  return m[2].toLowerCase() === 'km' ? value : value / 1000;
+}
+
+/** Sum per-step distances ("2.3 km", "450 m") into a route total, in km. */
+function totalDistanceKm(steps?: CommuteStep[] | null): number | null {
+  if (!steps || steps.length === 0) return null;
+  let total = 0;
+  let found = false;
+  for (const step of steps) {
+    const km = parseDistanceKm(step.distance);
+    if (km != null) {
+      total += km;
+      found = true;
+    }
+  }
+  return found ? Math.round(total * 10) / 10 : null;
+}
+
+// ---------------------------------------------------------------------------
+// Network coverage — per-carrier tier badges (same semantic palette as the
+// report's other status badges: green / amber / red / gray)
+// ---------------------------------------------------------------------------
+
+const CARRIER_TIER_META: Record<CoverageTier | 'pending' | 'unavailable', { label: string; cls: string }> = {
+  good: {
+    label: 'Good',
+    cls: 'bg-[var(--space-semantic-success-100)] text-[var(--space-semantic-success-700)]',
+  },
+  fair: {
+    label: 'Fair',
+    cls: 'bg-[var(--space-semantic-warning-100)] text-[var(--space-semantic-warning-700)]',
+  },
+  limited: {
+    label: 'Limited',
+    cls: 'bg-[var(--space-semantic-danger-100)] text-[var(--space-semantic-danger-700)]',
+  },
+  none: {
+    label: 'No coverage',
+    cls: 'bg-[var(--space-semantic-danger-100)] text-[var(--space-semantic-danger-700)]',
+  },
+  pending: {
+    label: 'Data unavailable',
+    cls: 'bg-[var(--space-surface-muted)] text-[var(--space-text-secondary)] border border-[var(--space-border-default)]',
+  },
+  unavailable: {
+    label: 'Data unavailable',
+    cls: 'bg-[var(--space-surface-muted)] text-[var(--space-text-secondary)] border border-[var(--space-border-default)]',
+  },
+};
+
+function coverageDate(iso?: string | null): string | null {
+  if (!iso) return null;
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return null;
+  return d.toLocaleDateString('en-NG', { day: 'numeric', month: 'short' });
+}
+
+// ---------------------------------------------------------------------------
+// Security features the lister advertised (never independently verified)
+// ---------------------------------------------------------------------------
+
+const SECURITY_FEATURE_MATCHERS: Array<{ label: string; re: RegExp }> = [
+  { label: 'Gated estate', re: /gated\s+(estate|community|compound)|access[- ]?controlled/i },
+  { label: 'CCTV', re: /\bcctv\b|security camera/i },
+  { label: '24-hour security', re: /24[\s/-]?(hr|hrs|hours?|7)[^.]{0,24}security|security[^.]{0,24}24[\s/-]?(hr|hrs|hours?|7)/i },
+  { label: 'Security post / gatehouse', re: /security post|gate\s?house|gateman/i },
+  { label: 'Fenced compound', re: /fenced/i },
+  { label: 'Estate security', re: /estate security|uniformed security|tight security|top-?notch security/i },
+];
+
+function advertisedSecurityFeatures(listing?: Listing | null): string[] {
+  if (!listing) return [];
+  const haystack = [...asArray<string>(listing.features), listing.title || '', listing.description || ''].join(' • ');
+  return SECURITY_FEATURE_MATCHERS.filter((m) => m.re.test(haystack)).map((m) => m.label);
+}
+
+// ---------------------------------------------------------------------------
+// Location map — schematic, full width, pin on the covered area
+// ---------------------------------------------------------------------------
+
+const MAP_BLOCKS: Array<{ x: number; y: number; w: number; h: number }> = [
+  { x: 12, y: 12, w: 74, h: 40 },
+  { x: 96, y: 10, w: 88, h: 34 },
+  { x: 196, y: 14, w: 62, h: 38 },
+  { x: 270, y: 10, w: 78, h: 44 },
+  { x: 16, y: 62, w: 62, h: 46 },
+  { x: 252, y: 66, w: 94, h: 42 },
+  { x: 18, y: 120, w: 86, h: 46 },
+  { x: 116, y: 126, w: 96, h: 40 },
+  { x: 224, y: 122, w: 56, h: 44 },
+  { x: 292, y: 120, w: 54, h: 46 },
+];
+
+function LocationMap({ areaKey, address }: { areaKey: AreaKey; address: string }) {
+  return (
+    <div data-testid="map-location">
+      <div className="relative rounded-2xl overflow-hidden border border-[var(--space-border-default)]">
+        <svg
+          viewBox="0 0 360 180"
+          className="w-full block"
+          role="img"
+          aria-label={`Schematic map showing the approximate location of ${address} in ${areaName(areaKey)}`}
+        >
+          <rect width="360" height="180" fill="var(--space-surface-muted)" />
+          {MAP_BLOCKS.map((b) => (
+            <rect
+              key={`${b.x}-${b.y}`}
+              x={b.x}
+              y={b.y}
+              width={b.w}
+              height={b.h}
+              rx="7"
+              fill="var(--space-surface-card)"
+              stroke="var(--space-border-default)"
+              strokeWidth="1"
+            />
+          ))}
+          <rect x="88" y="62" width="58" height="46" rx="10" fill="var(--space-semantic-success)" opacity="0.14" />
+          <path
+            d="M0,132 C70,124 130,100 196,96 C258,92 318,66 360,58"
+            stroke="var(--space-surface-page)"
+            strokeWidth="11"
+            fill="none"
+          />
+          <path
+            d="M0,132 C70,124 130,100 196,96 C258,92 318,66 360,58"
+            stroke="var(--space-border-strong)"
+            strokeWidth="1.5"
+            strokeDasharray="5 5"
+            fill="none"
+            opacity="0.8"
+          />
+          <path d="M212,0 C210,60 216,120 208,180" stroke="var(--space-surface-page)" strokeWidth="7" fill="none" />
+          <circle cx="180" cy="86" r="20" fill="var(--space-brand-primary)" opacity="0.14" />
+          <path
+            d="M180 60c-9.4 0-17 7.6-17 17 0 12.6 17 29 17 29s17-16.4 17-29c0-9.4-7.6-17-17-17z"
+            fill="var(--space-brand-primary)"
+          />
+          <circle cx="180" cy="77" r="6" fill="var(--space-surface-card)" />
+        </svg>
+        <span className="absolute bottom-2 left-2 px-2.5 py-1 rounded-full text-[11px] font-medium bg-black/50 text-white backdrop-blur-sm pointer-events-none">
+          {areaName(areaKey)}
+        </span>
+        <span className="absolute top-2 right-2 px-2 py-0.5 rounded-full text-[10px] font-medium bg-black/40 text-white backdrop-blur-sm pointer-events-none">
+          Approximate
+        </span>
+      </div>
+      <p className={`text-[10px] mt-1.5 ${typography.color.muted}`}>
+        Schematic area map — the pin marks the {areaName(areaKey)} area, not the surveyed plot.
+      </p>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Dimension card — the shared anatomy of the five report cards
+// ---------------------------------------------------------------------------
+
+function DimensionCard({
+  testId,
+  icon: Icon,
+  dimension,
+  headline,
+  tone,
+  statusLabel,
+  detail,
+  children,
+  expand,
+  expandLabel = 'See the data behind this',
+  headlineClassName,
+}: {
+  testId: string;
+  icon: ComponentType<{ className?: string }>;
+  dimension: string;
+  headline: string;
+  /** Overrides the default headline size/weight (e.g. the commute headline). */
+  headlineClassName?: string;
+  tone: BadgeTone;
+  /** Optional explicit gray-state label such as “Data unavailable”. */
+  statusLabel?: string;
+  detail?: string | null;
+  children?: ReactNode;
+  expand?: ReactNode;
+  expandLabel?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className={`${tw.card.default} rounded-2xl p-4`} data-testid={testId}>
+      <div className="flex items-start gap-3">
+        <span className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${tw.bg.accent}`}>
+          <Icon className={`w-[18px] h-[18px] ${tw.icon.primary}`} />
+        </span>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-start justify-between gap-2">
+            <div className="min-w-0">
+              <p className={`text-[10px] uppercase tracking-wide ${typography.color.muted}`}>{dimension}</p>
+              <p
+                className={`leading-snug mt-0.5 ${headlineClassName || `text-[15px] ${typography.weight.semibold}`} ${typography.color.primary}`}
+              >
+                {headline}
+              </p>
+            </div>
+            <Pill tone={tone} label={statusLabel} />
+          </div>
+          {detail && (
+            <p className={`text-xs mt-1.5 leading-relaxed ${typography.color.muted}`}>{detail}</p>
+          )}
+          {children}
+          {expand && (
+            <>
+              <button
+                onClick={() => setOpen((o) => !o)}
+                className={`mt-2.5 inline-flex items-center gap-1 py-1 text-xs ${typography.weight.medium} ${typography.color.brand}`}
+                aria-expanded={open}
+                data-testid={`${testId}-toggle`}
+              >
+                <ChevronDown className={`w-3.5 h-3.5 transition-transform ${open ? 'rotate-180' : ''}`} />
+                {open ? 'Hide the detail' : expandLabel}
+              </button>
+              {open && (
+                <div className="mt-2 pt-3 border-t border-[var(--space-border-default)]">{expand}</div>
+              )}
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Commute route section — collapsible turn-by-turn timeline
+// ---------------------------------------------------------------------------
+
+function RouteSection({
+  icon: Icon,
+  title,
+  subtitle,
+  steps,
+  testId,
+}: {
+  icon: ComponentType<{ className?: string }>;
+  title: string;
+  subtitle?: string | null;
+  steps?: CommuteStep[] | null;
+  testId: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const stepList = steps || [];
+  const expandable = stepList.length > 0;
+  const header = (
+    <>
+      <Icon className={`w-4 h-4 shrink-0 ${tw.icon.primary}`} />
+      <span className="flex-1 min-w-0">
+        <span className={`block text-sm ${typography.weight.semibold} ${typography.color.primary}`}>{title}</span>
+        {subtitle && <span className={`block text-[11px] mt-0.5 ${typography.color.muted}`}>{subtitle}</span>}
+      </span>
+    </>
+  );
+  return (
+    <div className="border border-[var(--space-border-default)] rounded-xl overflow-hidden" data-testid={testId}>
+      {expandable ? (
+        <button
+          onClick={() => setOpen((o) => !o)}
+          className="w-full flex items-center gap-2 px-3 py-2.5 text-left hover:bg-[var(--space-surface-muted)] transition-colors"
+          aria-expanded={open}
+          data-testid={`${testId}-toggle`}
+        >
+          {header}
+          <ChevronDown
+            className={`w-4 h-4 shrink-0 transition-transform ${tw.icon.muted} ${open ? 'rotate-180' : ''}`}
+          />
+        </button>
+      ) : (
+        <div className="flex items-center gap-2 px-3 py-2.5">{header}</div>
+      )}
+      {expandable && open && (
+        <ol className="px-3 pb-3 pt-1">
+          {stepList.map((step, i) => (
+            <li key={i} className="relative pl-9 pb-3.5 last:pb-0">
+              {i < stepList.length - 1 && (
+                <span
+                  className="absolute left-[11px] top-[24px] bottom-0 w-px bg-[var(--space-border-default)]"
+                  aria-hidden="true"
+                />
+              )}
+              <span
+                className={`absolute left-0 top-0.5 w-[22px] h-[22px] rounded-full flex items-center justify-center text-[10px] ${typography.weight.semibold} ${tw.bg.accent} ${typography.color.brand}`}
+              >
+                {i + 1}
+              </span>
+              <p className={`text-xs leading-relaxed ${typography.color.primary}`}>{step.instruction}</p>
+              <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+                {step.line && (
+                  <span className={`px-2 py-0.5 rounded-full text-[10px] ${typography.weight.medium} ${tw.bg.accent} ${typography.color.brand}`}>
+                    {step.line}
+                  </span>
+                )}
+                {(step.distance || step.duration) && (
+                  <span className={`text-[10px] ${typography.color.muted}`}>
+                    {[step.distance, step.duration].filter(Boolean).join(' · ')}
+                  </span>
+                )}
+              </div>
+            </li>
+          ))}
+        </ol>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Schematic flood-zone map overlay (flood card detail)
+// ---------------------------------------------------------------------------
+
+const ZONE_SLOTS: Array<{ x: number; y: number; w: number; h: number }> = [
+  { x: 8, y: 8, w: 148, h: 84 },
+  { x: 164, y: 8, w: 148, h: 84 },
+  { x: 8, y: 100, w: 96, h: 84 },
+  { x: 112, y: 100, w: 116, h: 84 },
+  { x: 236, y: 100, w: 76, h: 84 },
+];
+
+function FloodZoneMap({ zones }: { zones: FloodZone[] }) {
+  const visible = zones.slice(0, ZONE_SLOTS.length);
+  return (
+    <div>
+      <div className="rounded-xl overflow-hidden border border-[var(--space-border-default)]">
+        <svg viewBox="0 0 320 192" className="w-full block" role="img" aria-label="Schematic flood zone map">
+          <rect x="0" y="0" width="320" height="192" fill="var(--space-surface-muted)" />
+          {[32, 64, 96, 128, 160].map((y) => (
+            <line key={`h${y}`} x1="0" y1={y} x2="320" y2={y} stroke="var(--space-border-default)" strokeWidth="1" />
+          ))}
+          {[40, 80, 120, 160, 200, 240, 280].map((x) => (
+            <line key={`v${x}`} x1={x} y1="0" x2={x} y2="192" stroke="var(--space-border-default)" strokeWidth="1" />
+          ))}
+          {visible.map((zone, i) => {
+            const slot = ZONE_SLOTS[i];
+            const meta = FLOOD_CLASS_META[parseFloodClass(zone.class)];
+            return (
+              <g key={zone.name}>
+                <rect
+                  x={slot.x}
+                  y={slot.y}
+                  width={slot.w}
+                  height={slot.h}
+                  rx="10"
+                  fill={meta.fill}
+                  opacity="0.22"
+                  stroke={meta.fill}
+                  strokeWidth="1.5"
+                />
+                <text
+                  x={slot.x + 8}
+                  y={slot.y + 18}
+                  fontSize="9"
+                  fontWeight="600"
+                  fill="var(--space-text-primary)"
+                >
+                  {zone.name.length > 26 ? `${zone.name.slice(0, 25)}…` : zone.name}
+                </text>
+                <text x={slot.x + 8} y={slot.y + 31} fontSize="8" fill="var(--space-text-muted)">
+                  {FLOOD_CLASS_META[parseFloodClass(zone.class)].label}
+                </text>
+              </g>
+            );
+          })}
+        </svg>
+      </div>
+      <div className="flex items-center gap-3 mt-2 flex-wrap">
+        {(['low', 'moderate', 'high'] as FloodClass[]).map((c) => (
+          <span key={c} className={`inline-flex items-center gap-1.5 text-[11px] ${typography.color.muted}`}>
+            <span className="w-2.5 h-2.5 rounded-sm" style={{ background: FLOOD_CLASS_META[c].fill, opacity: 0.6 }} />
+            {FLOOD_CLASS_META[c].label}
+          </span>
+        ))}
+        <span className={`text-[10px] ml-auto ${typography.color.muted}`}>Schematic — indicative, not a survey plan</span>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Report view (unlocked)
+// ---------------------------------------------------------------------------
+
+interface ReportViewProps {
+  listing?: Listing | null;
+  areaKey: AreaKey;
+  address: string;
+  profile: AreaProfile | undefined;
+  reports: TenantReport[];
+  /**
+   * Resolved per-carrier network coverage (resolveCoverage in coverage.ts).
+   * When omitted the card renders the honest all-pending state.
+   */
+  coverage?: CoverageResolution | null;
+  /** The renter's saved "where do you work" destination, if any. */
+  workDestination?: string | null;
+  /** Save a work destination for this account (commute personalization). */
+  onSaveWorkDestination?: (destination: string) => void | Promise<void>;
+  /** Opens the tenant submit-a-report flow, prefilled for this area. */
+  onSubmitReport?: () => void;
+}
+
+function SubmitReportPrompt({ label, onClick }: { label: string; onClick?: () => void }) {
+  if (!onClick) return null;
+  return (
+    <button
+      onClick={onClick}
+      className={`mt-3 inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs ${tw.button.secondary}`}
+      data-testid="button-add-tenant-report"
+    >
+      <PlusCircle className="w-3.5 h-3.5" />
+      {label}
+    </button>
+  );
+}
+
+/**
+ * Workplace capture + edit for the commute card. Saved once to the renter's
+ * account (renter_accounts.work_destination) it powers every report; the
+ * "Change workplace" link updates it any time and all reports follow
+ * immediately, because the commute is a lookup, not stored per report.
+ */
+function WorkplaceEditor({
+  workplace,
+  onSave,
+}: {
+  workplace: string | null;
+  onSave: (destination: string) => void | Promise<void>;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [justSaved, setJustSaved] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+
+  const save = async () => {
+    const dest = draft.trim();
+    if (!dest || saving) return;
+    setSaving(true);
+    setSaveError(null);
+    try {
+      await Promise.resolve(onSave(dest));
+      setJustSaved(true);
+      setEditing(false);
+    } catch (error) {
+      setSaveError(error instanceof Error ? error.message : 'We could not save your workplace — please try again.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (!workplace || editing) {
+    return (
+      <div className="mt-3" data-testid="workplace-editor">
+        <div className="flex gap-2">
+          <input
+            type="text"
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && save()}
+            placeholder="Address or area — e.g. Victoria Island or Ikeja"
+            className={`${tw.input.base} ${tw.input.default} text-xs rounded-xl py-2`}
+            data-testid="input-work-destination"
+          />
+          <button
+            onClick={save}
+            disabled={saving || !draft.trim()}
+            className={`shrink-0 px-3 py-2 rounded-xl text-xs flex items-center gap-1.5 ${tw.button.secondary} disabled:opacity-50`}
+            data-testid="button-save-work"
+          >
+            {saving && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+            Save
+          </button>
+        </div>
+        {saveError && (
+          <p className={`mt-1.5 text-[11px] ${typography.color.danger}`} role="alert" data-testid="workplace-save-error">
+            {saveError}
+          </p>
+        )}
+        {editing && workplace && (
+          <button
+            onClick={() => {
+              setSaveError(null);
+              setEditing(false);
+            }}
+            className={`mt-1.5 py-1 text-[11px] underline underline-offset-2 ${typography.color.muted}`}
+            data-testid="button-cancel-change-workplace"
+          >
+            Keep “{workplace}”
+          </button>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div className="mt-2.5">
+      {justSaved && (
+        <p className={`text-xs mb-1 ${typography.color.success}`} data-testid="workplace-saved-note">
+          Workplace saved to your account — every report now uses it.
+        </p>
+      )}
+      <button
+        onClick={() => {
+          setDraft(workplace);
+          setJustSaved(false);
+          setEditing(true);
+        }}
+        className={`py-1 text-xs underline underline-offset-2 ${typography.weight.medium} ${typography.color.brand}`}
+        data-testid="button-change-workplace"
+      >
+        Change workplace
+      </button>
+    </div>
+  );
+}
+
+export default function ReportView({
+  listing,
+  areaKey,
+  address,
+  profile,
+  reports,
+  coverage,
+  workDestination,
+  onSaveWorkDestination,
+  onSubmitReport,
+}: ReportViewProps) {
+  // Optimistic copy of a just-saved workplace so the card reflects it before
+  // the parent's account-row refresh lands.
+  const [savedWorkplace, setSavedWorkplace] = useState<string | null>(null);
+  const workplace = savedWorkplace ?? workDestination ?? null;
+
+  const floodReports = useMemo(
+    () => reports.filter((r) => r.report_type === 'flood' && r.area_key === areaKey),
+    [reports, areaKey]
+  );
+  const powerReports = useMemo(
+    () => reports.filter((r) => r.report_type === 'power' && r.area_key === areaKey),
+    [reports, areaKey]
+  );
+
+  const avgPowerHours = useMemo(() => {
+    const values = powerReports
+      .map((r) => (typeof r.avg_daily_hours === 'string' ? parseFloat(r.avg_daily_hours) : r.avg_daily_hours))
+      .filter((v): v is number => v != null && !isNaN(v));
+    if (values.length === 0) return null;
+    return Math.round((values.reduce((a, b) => a + b, 0) / values.length) * 10) / 10;
+  }, [powerReports]);
+
+  const zones = asArray<FloodZone>(profile?.flood_zones);
+  const sources = asArray<SourceLink>(profile?.sources);
+
+  const flood = useMemo(() => floodPresentation(profile), [profile]);
+  const power = useMemo(
+    () => powerPresentation(profile, avgPowerHours, powerReports.length),
+    [profile, avgPowerHours, powerReports.length]
+  );
+  const commute = useMemo(() => parseCommute(listing, profile), [listing, profile]);
+  const advertisedSecurity = useMemo(() => advertisedSecurityFeatures(listing), [listing]);
+  const coverageInfo = useMemo(() => coverage ?? resolveCoverage(areaKey, undefined), [coverage, areaKey]);
+
+  const drivingSteps = (commute?.routes.find((r) => r.mode === 'driving')?.steps as CommuteStep[] | null) || null;
+  const drivingKm = totalDistanceKm(drivingSteps);
+  const transitRoute = commute?.routes.find((r) => r.mode === 'transit' && typeof r.minutes === 'number') || null;
+  const transitMinutes = transitRoute?.minutes ?? null;
+  const transitSteps = (transitRoute?.steps as CommuteStep[] | null) || null;
+
+  const handleSaveWorkplace = onSaveWorkDestination
+    ? async (destination: string) => {
+        await Promise.resolve(onSaveWorkDestination(destination));
+        setSavedWorkplace(destination);
+      }
+    : undefined;
+
+  return (
+    <div className="space-y-3" data-testid="report-unlocked">
+      {/* ------------------------- 1 · LOCATION MAP ------------------------- */}
+      <LocationMap areaKey={areaKey} address={address} />
+
+      {/* ------------------------- 2 · FLOOD ------------------------- */}
+      <DimensionCard
+        testId="card-flood"
+        icon={Droplets}
+        dimension="Flood risk"
+        headline={flood.headline}
+        tone={flood.tone}
+        detail={flood.detail}
+        expand={
+          <div>
+            {profile?.flood_zone_label && (
+              <p className={`text-sm ${typography.weight.medium} ${typography.color.primary}`}>
+                {profile.flood_zone_label}
+              </p>
+            )}
+            {profile?.flood_summary && (
+              <p className={`text-xs mt-1.5 leading-relaxed ${typography.color.secondary}`}>{profile.flood_summary}</p>
+            )}
+            {zones.length > 0 && (
+              <div className="mt-3">
+                <p className={`text-xs uppercase tracking-wide mb-2 ${typography.color.muted}`}>
+                  Zone map — {areaName(areaKey)}
+                </p>
+                <FloodZoneMap zones={zones} />
+              </div>
+            )}
+            {profile?.flood_basis && (
+              <div className="flex items-start gap-2 mt-3">
+                <Info className={`w-3.5 h-3.5 mt-0.5 shrink-0 ${tw.icon.muted}`} />
+                <p className={`text-[11px] leading-relaxed ${typography.color.muted}`}>{profile.flood_basis}</p>
+              </div>
+            )}
+
+            {/* Tenant flood history */}
+            <div className="mt-3 pt-3 border-t border-[var(--space-border-default)]">
+              <div className="flex items-center gap-2 mb-2">
+                <Users className={`w-3.5 h-3.5 ${tw.icon.muted}`} />
+                <p className={`text-xs uppercase tracking-wide ${typography.color.muted}`}>
+                  Tenant flood history · {floodReports.length} report{floodReports.length === 1 ? '' : 's'}
+                </p>
+              </div>
+              {floodReports.length === 0 ? (
+                <p className={`text-xs ${typography.color.muted}`}>
+                  No tenant reports for this area yet — the zone lookup above stands on its own. If
+                  you've lived on one of these streets, your report is what makes this section
+                  sharper for the next renter.
+                </p>
+              ) : (
+                <ul className="space-y-2.5">
+                  {floodReports.map((r) => {
+                    const sev = SEVERITY_META[r.severity || ''] || null;
+                    return (
+                      <li key={r.id} className={`p-3 rounded-xl ${tw.bg.muted} border border-[var(--space-border-default)]`}>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className={`text-xs ${typography.weight.semibold} ${typography.color.primary}`}>{r.street || 'Unnamed street'}</span>
+                          {sev && <span className={sev.badge}>{sev.label}</span>}
+                          {r.verified && (
+                            <span className={`inline-flex items-center gap-1 text-[10px] ${typography.color.success}`}>
+                              <BadgeCheck className="w-3 h-3" /> verified
+                            </span>
+                          )}
+                        </div>
+                        <p className={`text-[11px] mt-0.5 ${typography.color.muted}`}>
+                          {sourceLine(r, r.event_period)}
+                        </p>
+                        {r.description && <p className={`text-xs mt-1.5 leading-relaxed ${typography.color.secondary}`}>{r.description}</p>}
+                        <div className="flex items-center gap-3 mt-2">
+                          {r.photo_url && (
+                            <a href={r.photo_url} target="_blank" rel="noreferrer" className="block">
+                              <img src={r.photo_url} alt="Flood evidence" className="h-16 w-24 object-cover rounded-lg border border-[var(--space-border-default)]" />
+                            </a>
+                          )}
+                          {r.evidence_url && (
+                            <a
+                              href={r.evidence_url}
+                              target="_blank"
+                              rel="noreferrer"
+                              className={`inline-flex items-center gap-1 text-xs underline ${typography.color.secondary}`}
+                            >
+                              <ExternalLink className="w-3 h-3" /> View evidence
+                            </a>
+                          )}
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+              <SubmitReportPrompt label="Report flooding on your street" onClick={onSubmitReport} />
+            </div>
+          </div>
+        }
+      />
+
+      {/* ------------------------- 3 · POWER ------------------------- */}
+      <DimensionCard
+        testId="card-power"
+        icon={Zap}
+        dimension="Grid power"
+        headline={power.headline}
+        tone={power.tone}
+        detail={power.detail}
+        expand={
+          <div>
+            <div className="grid grid-cols-2 gap-2">
+              <div className={`p-3 rounded-xl text-center ${tw.bg.muted} border border-[var(--space-border-default)]`}>
+                <p className={`text-lg ${typography.weight.semibold} ${typography.color.primary}`}>
+                  {profile?.band_hours_min ?? '—'}h+
+                </p>
+                <p className={`text-[11px] ${typography.color.muted}`}>committed daily supply</p>
+              </div>
+              <div className={`p-3 rounded-xl text-center ${tw.bg.muted} border border-[var(--space-border-default)]`}>
+                <p className={`text-lg ${typography.weight.semibold} ${typography.color.primary}`}>
+                  ₦{profile?.tariff_ngn_kwh != null ? Number(profile.tariff_ngn_kwh).toLocaleString() : '—'}
+                </p>
+                <p className={`text-[11px] ${typography.color.muted}`}>per kWh (approx. tariff)</p>
+              </div>
+            </div>
+            {profile?.band_note && (
+              <div className="flex items-start gap-2 mt-3">
+                <Info className={`w-3.5 h-3.5 mt-0.5 shrink-0 ${tw.icon.muted}`} />
+                <p className={`text-[11px] leading-relaxed ${typography.color.muted}`}>{profile.band_note}</p>
+              </div>
+            )}
+            {profile?.power_summary && (
+              <p className={`text-xs mt-2 leading-relaxed ${typography.color.secondary}`}>{profile.power_summary}</p>
+            )}
+
+            {/* Crowd power reports */}
+            <div className="mt-3 pt-3 border-t border-[var(--space-border-default)]">
+              <div className="flex items-center gap-2 mb-2">
+                <Users className={`w-3.5 h-3.5 ${tw.icon.muted}`} />
+                <p className={`text-xs uppercase tracking-wide ${typography.color.muted}`}>
+                  Tenant-reported hours · {powerReports.length} report{powerReports.length === 1 ? '' : 's'}
+                </p>
+                {avgPowerHours != null && (
+                  <span className={`ml-auto ${tw.badge.default} ${tw.badge.primary}`}>avg {avgPowerHours}h/day</span>
+                )}
+              </div>
+              {powerReports.length === 0 ? (
+                <p className={`text-xs ${typography.color.muted}`}>
+                  No tenant power reports yet — the official band above stands on its own. The band is
+                  a regulated commitment; only tenants can say what the meter actually gives.
+                </p>
+              ) : (
+                <ul className="space-y-2.5">
+                  {powerReports.map((r) => (
+                    <li key={r.id} className={`p-3 rounded-xl ${tw.bg.muted} border border-[var(--space-border-default)]`}>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className={`text-xs ${typography.weight.semibold} ${typography.color.primary}`}>{r.street || 'Unnamed street'}</span>
+                        <span className={`${tw.badge.default} ${tw.badge.primary}`}>
+                          {r.avg_daily_hours != null ? `${Number(r.avg_daily_hours)}h/day` : '—'}
+                        </span>
+                        {r.verified && (
+                          <span className={`inline-flex items-center gap-1 text-[10px] ${typography.color.success}`}>
+                            <BadgeCheck className="w-3 h-3" /> verified
+                          </span>
+                        )}
+                      </div>
+                      <p className={`text-[11px] mt-0.5 ${typography.color.muted}`}>
+                        {sourceLine(r, r.period)}
+                      </p>
+                      {r.outage_pattern && <p className={`text-xs mt-1 ${typography.color.secondary}`}>{r.outage_pattern}</p>}
+                      {r.description && <p className={`text-xs mt-1 leading-relaxed ${typography.color.muted}`}>{r.description}</p>}
+                      <div className="flex items-center gap-3 mt-2 empty:mt-0">
+                        {r.photo_url && (
+                          <a href={r.photo_url} target="_blank" rel="noreferrer" className="block">
+                            <img src={r.photo_url} alt="Power evidence" className="h-16 w-24 object-cover rounded-lg border border-[var(--space-border-default)]" />
+                          </a>
+                        )}
+                        {r.evidence_url && (
+                          <a
+                            href={r.evidence_url}
+                            target="_blank"
+                            rel="noreferrer"
+                            className={`inline-flex items-center gap-1 text-xs underline ${typography.color.secondary}`}
+                          >
+                            <ExternalLink className="w-3 h-3" /> View evidence
+                          </a>
+                        )}
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              <SubmitReportPrompt label="Report your daily power hours" onClick={onSubmitReport} />
+            </div>
+          </div>
+        }
+      />
+
+      {/* ------- 4–6 · COMMUTE, NETWORK & SECURITY (always rendered) ------- */}
+      {commute ? (
+        <DimensionCard
+          testId="card-commute"
+          icon={Car}
+          dimension="Distance to work"
+          headline={`~${commute.driveMinutes} min by car${
+            transitMinutes != null ? ` · ~${transitMinutes} min by bus` : ''
+          }`}
+          headlineClassName={`text-lg ${typography.weight.bold}`}
+          tone={commuteTone(commute.driveMinutes)}
+          detail={
+            commute.measuredNote ||
+            `Measured in ${commute.trafficLabel || 'typical Lagos traffic'}${
+              commute.destination ? ` to ${commute.destination}` : ''
+            }.`
+          }
+        >
+          <div className="mt-3 space-y-2">
+            <RouteSection
+              icon={Car}
+              title={`By car — ${commute.driveMinutes} min`}
+              subtitle={[
+                commute.trafficLabel || 'typical Lagos traffic',
+                drivingKm != null ? `~${drivingKm} km total` : null,
+              ]
+                .filter(Boolean)
+                .join(' · ')}
+              steps={drivingSteps}
+              testId="route-driving"
+            />
+            {transitMinutes != null ? (
+              <RouteSection
+                icon={Bus}
+                title={`By bus — ${transitMinutes} min`}
+                subtitle="public transit — BRT, bus or rail where available"
+                steps={transitSteps}
+                testId="route-transit"
+              />
+            ) : (
+              <div
+                className="flex items-center gap-2 px-3 py-2.5 rounded-xl border border-[var(--space-border-default)] bg-[var(--space-surface-muted)]"
+                data-testid="route-transit-unavailable"
+              >
+                <Bus className={`w-4 h-4 shrink-0 ${tw.icon.muted}`} />
+                <span className={`text-xs ${typography.color.muted}`}>
+                  Public transit route not available for this area
+                </span>
+              </div>
+            )}
+          </div>
+          {handleSaveWorkplace && <WorkplaceEditor workplace={workplace} onSave={handleSaveWorkplace} />}
+        </DimensionCard>
+      ) : workplace ? (
+        <DimensionCard
+          testId="card-commute"
+          icon={Briefcase}
+          dimension="Distance to work"
+          headline={`Commute to ${workplace} not measured yet`}
+          tone="improving"
+          statusLabel="Data unavailable"
+          detail="Commute data unavailable for this route so far. We only show real routes measured in Lagos traffic (Google Routes) — never straight-line guesses. Your saved workplace applies to every report, and this card fills in automatically once the route is measured."
+        >
+          {handleSaveWorkplace && <WorkplaceEditor workplace={workplace} onSave={handleSaveWorkplace} />}
+        </DimensionCard>
+      ) : (
+        <DimensionCard
+          testId="card-commute"
+          icon={Briefcase}
+          dimension="Distance to work"
+          headline="Add your workplace to see your commute"
+          tone="improving"
+          statusLabel="Add workplace"
+          detail="Tell us where you work — an address or area like “Victoria Island” or “Ikeja”. It saves to your account once, and every report you open then shows your real commute by car and by bus."
+        >
+          {handleSaveWorkplace && <WorkplaceEditor workplace={null} onSave={handleSaveWorkplace} />}
+        </DimensionCard>
+      )}
+
+      {/* ------------------------- 5 · NETWORK ------------------------- */}
+      <DimensionCard
+        testId="card-network"
+        icon={Wifi}
+        dimension="Network coverage"
+        headline={coverageInfo.headline}
+        tone={coverageInfo.tone}
+        detail={coverageInfo.detail}
+        expand={
+          <div>
+            <ul className="space-y-3">
+              {coverageInfo.carriers.map((c) => (
+                <li key={c.carrier.key} data-testid={`network-source-${c.carrier.key}`}>
+                  <p className={`text-xs ${typography.weight.semibold} ${typography.color.primary}`}>{c.carrier.label}</p>
+                  <p className={`text-[11px] mt-0.5 leading-relaxed ${typography.color.muted}`}>
+                    {c.status === 'measured'
+                      ? `Source: ${c.sourceLabel || 'OpenCelliD community cell-site data'} — ${c.cellsTotal ?? 0} recorded cell site${c.cellsTotal === 1 ? '' : 's'} within ~1.2 km${coverageDate(c.checkedAt) ? ` · checked ${coverageDate(c.checkedAt)}` : ''}.`
+                      : c.status === 'reported'
+                        ? c.note || 'Based on published coverage reports — not a live signal test.'
+                        : c.note ||
+                          'No queryable data for this carrier here yet — the row stays gray rather than showing a made-up score.'}
+                  </p>
+                  <a
+                    href={c.carrier.checkerUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className={`inline-flex items-center gap-1 mt-1 text-[11px] underline ${typography.color.secondary}`}
+                  >
+                    <ExternalLink className="w-3 h-3" /> Cross-check on the {c.carrier.checkerLabel}
+                  </a>
+                </li>
+              ))}
+            </ul>
+            <div className="flex items-start gap-2 mt-3 pt-3 border-t border-[var(--space-border-default)]">
+              <Info className={`w-3.5 h-3.5 mt-0.5 shrink-0 ${tw.icon.muted}`} />
+              <p className={`text-[11px] leading-relaxed ${typography.color.muted}`}>
+                Each carrier row names its source: “Published coverage reports” tiers come from the
+                carriers' published coverage maps, NCC industry data and public crowd-sourced
+                coverage reports for {areaName(areaKey)} — never a live signal test — while live
+                lookups reflect observed cell-site density in the OpenCelliD community database.
+                Neither is the carriers' own coverage claim, and none of it is independently
+                verified by Veranda. Always test your own SIM at the address before you sign.
+              </p>
+            </div>
+          </div>
+        }
+      >
+        <div className="mt-3 space-y-1.5" data-testid="network-carriers">
+          {coverageInfo.carriers.map((c) => {
+            const meta = c.tier
+              ? CARRIER_TIER_META[c.tier]
+              : CARRIER_TIER_META[c.status === 'unavailable' ? 'unavailable' : 'pending'];
+            return (
+              <div
+                key={c.carrier.key}
+                className={`flex items-center gap-2 px-3 py-2 rounded-xl ${tw.bg.muted} border border-[var(--space-border-default)]`}
+                data-testid={`network-carrier-${c.carrier.key}`}
+              >
+                <span className={`flex-1 min-w-0 truncate text-xs ${typography.weight.semibold} ${typography.color.primary}`}>
+                  {c.carrier.label}
+                </span>
+                {c.technologies && (
+                  <span className={`shrink-0 text-[10px] ${typography.color.muted}`}>{c.technologies}</span>
+                )}
+                <span className={`shrink-0 px-2 py-0.5 rounded-full text-[10px] ${typography.weight.semibold} ${meta.cls}`}>
+                  {meta.label}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      </DimensionCard>
+
+      {/* ------------------------- 6 · SECURITY ------------------------- */}
+      <DimensionCard
+        testId="card-security"
+        icon={Shield}
+        dimension="Security"
+        headline={
+          advertisedSecurity.length > 0
+            ? `${advertisedSecurity.length} security ${advertisedSecurity.length === 1 ? 'amenity' : 'amenities'} listed`
+            : 'No security amenities listed'
+        }
+        tone="improving"
+        statusLabel={advertisedSecurity.length > 0 ? 'Landlord listed' : 'Data unavailable'}
+        detail={
+          advertisedSecurity.length > 0
+            ? 'Advertised by landlord — not independently verified.'
+            : "The listing does not mention gated access, CCTV, a security post or similar amenities. That is missing listing data, not a claim that the area is safe or unsafe."
+        }
+      >
+        {advertisedSecurity.length > 0 ? (
+          <div className="mt-3" data-testid="security-advertised">
+            <p className={`text-[11px] ${typography.weight.medium} ${typography.color.muted}`}>
+              Advertised by landlord — not independently verified.
+            </p>
+            <div className="flex flex-wrap gap-1.5 mt-1.5">
+              {advertisedSecurity.map((feature) => (
+                <span
+                  key={feature}
+                  className={`px-2.5 py-1 rounded-full text-[11px] ${tw.bg.muted} border border-[var(--space-border-default)] ${typography.color.secondary}`}
+                >
+                  {feature}
+                </span>
+              ))}
+            </div>
+          </div>
+        ) : (
+          <p className={`text-xs mt-3 ${typography.color.muted}`} data-testid="security-empty">
+            No security amenities listed
+          </p>
+        )}
+      </DimensionCard>
+
+      {/* Sources */}
+      {sources.length > 0 && (
+        <div className={`${tw.card.flat} p-3`}>
+          <p className={`text-xs uppercase tracking-wide mb-1.5 ${typography.color.muted}`}>Lookup sources</p>
+          <ul className="space-y-1">
+            {sources.map((s) => (
+              <li key={s.url}>
+                <a href={s.url} target="_blank" rel="noreferrer" className={`inline-flex items-center gap-1.5 text-xs underline ${typography.color.secondary}`}>
+                  <ExternalLink className="w-3 h-3" /> {s.label}
+                </a>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {/* Disclaimer — sits below all five dimensions */}
+      <p className={`text-[10px] text-center leading-relaxed ${typography.color.muted}`} data-testid="report-disclaimer">
+        Qualitative fields on this report are directional, not precise scores — they sharpen as more
+        verified lookups and tenant reports land for this street. Gray “Improving”, “Add workplace”
+        and “Data unavailable” badges are neutral states, never danger signals.
+      </p>
+    </div>
+  );
+}

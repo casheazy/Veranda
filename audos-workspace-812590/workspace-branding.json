@@ -1,0 +1,149 @@
+{
+  "businessPlan": "## Business Overview\nVeranda\n\n## Customer Profile\nLagos renters who want one reliable view of available homes and need to understand hidden lease-long risks before paying an agent, deposit, or rent.\n\n### Pain Points\n- Paying multiple agents just to access listings\n- Wasting weekends on homes that do not match their photos or description\n- Discovering flood exposure, unreliable power, weak network coverage, or misleading security claims only after signing\n- Navigating an unfamiliar Lagos area without trustworthy, property-specific evidence\n\n## Key Problems\n- **Discovery**: Listings are fragmented across portals and agents\n- **Verification**: The most consequential facts are hidden until after commitment\n- **Trust**: Thin data must be labelled honestly rather than turned into fake precision\n\n## Customer Journey\n**USER GOALS**\nUsers want to find a safe, suitable, and authentic home in a new area without getting scammed or overcharged by traditional agents. They are trying to solve the problem of hidden risks—like flooding, poor power supply, and security issues—before signing a binding lease. Ultimately, they want a seamless transition from stressful house hunting to comfortably settling into their new neighborhood.\n\n**QUALIFYING QUESTIONS**\n\"Where are you right now in your moving journey?\"\n1. I'm just starting to browse Lagos listings\n2. I found a place but need to verify it before paying\n3. I'm comparing homes and need to understand the trade-offs\n\n\"What is your biggest worry about this lease?\"\n1. Paying multiple agents for wasted inspections\n2. Hidden environmental or utility risks (floods, bad power, weak network)\n3. A difficult commute or unverified security claims\n\n**JOURNEY NARRATIVE**\nThe renter starts with free, unlimited search across real Lagos listings. Opening a home reveals its photos, price, description, original source, and a locked verification-report preview. A lightweight email account with a one-time code restores access across devices and tracks five lifetime free full-report unlocks. Each unlocked report makes flood risk, grid power, a measured commute, estimated network coverage, and advertised security amenities scannable in seconds, then offers a listing-grounded AI follow-up chat. After all five free unlocks are used, the Veranda Monthly subscription at ₦7,000/month (charged as $5.04 USD through Stripe) enables unlimited one-click reports. Settlement features, fraud detection, crowdsourced submissions, and cities outside Lagos are intentionally deferred from this version.\n\n**APP SUPPORT MAP**\nFind & Verify is the product's app-first home. It preserves the existing listings scraper and NormalizedListing catalog, layers additive renter-account and unlock-history tables over that data, and uses official area lookups plus clearly labelled listing claims for reports. The in-space agent helps renters search, compare areas, understand report evidence, and open the app; it must never invent a commute time, network measurement, security score, or subscription price.\n\n**COMMUNITY OPPORTUNITIES**\nUsers can benefit massively from a shared intelligence board where past renters rate the actual power supply, flood resilience, and honesty of local landlords or agents. By harnessing these crowdsourced neighborhood reviews, the entrepreneur creates a self-policing ecosystem where new users avoid known traps and find hidden gems faster through verified, lived experiences.\n\n**MONETIZATION HOOK**\nBrowsing and searching are always free and never require an account. Every verified email account receives five lifetime full-report unlocks, counted across listings, sessions, and devices; reopening a report never consumes another unlock. Only after the fifth free unlock does the app show the upgrade state. One ₦7,000 monthly recurring subscription — Veranda Monthly (charged as $5.04 USD through secure Stripe checkout) — then enables unlimited one-click reports and can be cancelled anytime.\n\n## AI Tool Suite\n### Find & Verify\n**Purpose**: Search real Lagos listings and unlock evidence-led reports about flood exposure, grid power, commute, estimated network coverage, and advertised security amenities before leasing.\n**User Story**: I want one free view of available homes, then a fast, honest report on the homes I am seriously considering before I pay anyone.\n\n---\n*Generated on 7/19/2026*\n",
+  "workspaceId": "85d8606a-de71-4f05-b2b5-23980bd71b87",
+  "configId": 812590,
+  "name": "Veranda",
+  "tagline": "Find. Verify. Settle.",
+  "logoUrl": "https://storage.googleapis.com/audos-images/brand-icons/a4ad47a1-b9bd-4551-b70d-08b98544d785.png",
+  "iconUrl": "https://storage.googleapis.com/audos-images/brand-icons/a4ad47a1-b9bd-4551-b70d-08b98544d785.png",
+  "logoOnDarkUrl": "https://storage.googleapis.com/audos-images/brand-icons/e2f79493-254f-4594-bec3-4072f6ec1a6d.mono.png",
+  "colors": {
+    "primary": "#c25733",
+    "highlight": "#e68a5a",
+    "contrast": "#2d1f16",
+    "secondary": "#e68a5a",
+    "accent": "#2d1f16",
+    "primaryScale": {
+      "50": "#faf1ea",
+      "100": "#f4e0d2",
+      "200": "#eac4ab",
+      "500": "#cd6737",
+      "600": "#c25733",
+      "700": "#a34a24",
+      "900": "#6f3218"
+    },
+    "highlightScale": {
+      "50": "#fdf4ed",
+      "100": "#fae5d7",
+      "200": "#f5ccb1",
+      "500": "#ea9a70",
+      "600": "#e68a5a",
+      "700": "#c97448",
+      "900": "#8f5230"
+    },
+    "surfaces": {
+      "page": "#faf7f2",
+      "pageAlt": "#f3ede3",
+      "gradientFrom": "#faf7f2",
+      "gradientVia": "#f6efe5",
+      "gradientTo": "#f9ece1",
+      "card": "#fffdfa",
+      "cardHover": "#fbf5ec",
+      "panel": "#fffdfa",
+      "panelStrong": "#ffffff",
+      "muted": "#f5efe6",
+      "accentSoft": "#f8e9dd",
+      "border": "#e9dfd1",
+      "borderStrong": "#d9c9b5"
+    },
+    "text": {
+      "primary": "#2d1f16",
+      "secondary": "#5c4838",
+      "brand": "#a34a24",
+      "accent": "#8a4520",
+      "muted": "#8a7360",
+      "onPrimary": "#ffffff",
+      "onHighlight": "#3a2314",
+      "onContrast": "#e68a5a"
+    },
+    "semantic": {
+      "success": "#16a34a",
+      "warning": "#d97706",
+      "danger": "#dc2626"
+    },
+    "shell": {
+      "buttonText": "#ffffff",
+      "accentButtonText": "#3a2314",
+      "dockText": "#2d1f16",
+      "icon": "#a34a24",
+      "shadow": "#e7d9c6",
+      "shadowStrong": "#d6c2a8"
+    }
+  },
+  "palette": {
+    "primary": "#c25733",
+    "highlight": "#e68a5a",
+    "contrast": "#2d1f16",
+    "secondary": "#e68a5a",
+    "accent": "#2d1f16",
+    "primaryScale": {
+      "50": "#faf1ea",
+      "100": "#f4e0d2",
+      "200": "#eac4ab",
+      "500": "#cd6737",
+      "600": "#c25733",
+      "700": "#a34a24",
+      "900": "#6f3218"
+    },
+    "highlightScale": {
+      "50": "#fdf4ed",
+      "100": "#fae5d7",
+      "200": "#f5ccb1",
+      "500": "#ea9a70",
+      "600": "#e68a5a",
+      "700": "#c97448",
+      "900": "#8f5230"
+    },
+    "surfaces": {
+      "page": "#faf7f2",
+      "pageAlt": "#f3ede3",
+      "gradientFrom": "#faf7f2",
+      "gradientVia": "#f6efe5",
+      "gradientTo": "#f9ece1",
+      "card": "#fffdfa",
+      "cardHover": "#fbf5ec",
+      "panel": "#fffdfa",
+      "panelStrong": "#ffffff",
+      "muted": "#f5efe6",
+      "accentSoft": "#f8e9dd",
+      "border": "#e9dfd1",
+      "borderStrong": "#d9c9b5"
+    },
+    "text": {
+      "primary": "#2d1f16",
+      "secondary": "#5c4838",
+      "brand": "#a34a24",
+      "accent": "#8a4520",
+      "muted": "#8a7360",
+      "onPrimary": "#ffffff",
+      "onHighlight": "#3a2314",
+      "onContrast": "#e68a5a"
+    },
+    "semantic": {
+      "success": "#16a34a",
+      "warning": "#d97706",
+      "danger": "#dc2626"
+    },
+    "shell": {
+      "buttonText": "#ffffff",
+      "accentButtonText": "#3a2314",
+      "dockText": "#2d1f16",
+      "icon": "#a34a24",
+      "shadow": "#e7d9c6",
+      "shadowStrong": "#d6c2a8"
+    }
+  },
+  "pickedBrandColor": "#c25733",
+  "typography": {
+    "font": "Inter",
+    "category": "sans-serif",
+    "weights": [
+      400,
+      600,
+      700
+    ],
+    "headingFont": "Inter",
+    "bodyFont": "Inter"
+  },
+  "heroVideoUrl": "https://storage.googleapis.com/audos-images/videos/scene_group_1784501249318_stitched.mp4"
+}

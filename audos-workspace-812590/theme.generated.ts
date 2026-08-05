@@ -1,0 +1,153 @@
+import type { SpaceThemeContract } from "@shared/space-theme";
+
+export const generatedSpaceTheme: SpaceThemeContract = {
+  "version": 1,
+  "recipeId": "glass",
+  "branding": {
+    "name": "Veranda",
+    "tagline": "Find. Verify. Settle.",
+    "logoUrl": "https://storage.googleapis.com/audos-images/brand-icons/e2f79493-254f-4594-bec3-4072f6ec1a6d.mono.png"
+  },
+  "palette": {
+    "primary": "#c2572b",
+    "highlight": "#e68a5a",
+    "contrast": "#2d1f16",
+    "secondary": "#e68a5a",
+    "accent": "#2d1f16",
+    "primaryScale": {
+      "50": "#faf1ea",
+      "100": "#f4e0d2",
+      "200": "#eac4ab",
+      "500": "#cd6737",
+      "600": "#c2572b",
+      "700": "#a34a24",
+      "900": "#6f3218"
+    },
+    "highlightScale": {
+      "50": "#fdf4ed",
+      "100": "#fae5d7",
+      "200": "#f5ccb1",
+      "500": "#ea9a70",
+      "600": "#e68a5a",
+      "700": "#c97448",
+      "900": "#8f5230"
+    },
+    "surfaces": {
+      "page": "#faf7f2",
+      "pageAlt": "#f3ede3",
+      "gradientFrom": "#faf7f2",
+      "gradientVia": "#f6efe5",
+      "gradientTo": "#f9ece1",
+      "card": "#fffdfa",
+      "cardHover": "#fbf5ec",
+      "panel": "#fffdfa",
+      "panelStrong": "#ffffff",
+      "muted": "#f5efe6",
+      "accentSoft": "#f8e9dd",
+      "border": "#e9dfd1",
+      "borderStrong": "#d9c9b5"
+    },
+    "text": {
+      "primary": "#2d1f16",
+      "secondary": "#5c4838",
+      "brand": "#a34a24",
+      "accent": "#8a4520",
+      "muted": "#8a7360",
+      "onPrimary": "#ffffff",
+      "onHighlight": "#3a2314",
+      "onContrast": "#e68a5a"
+    },
+    "semantic": {
+      "success": "#16a34a",
+      "warning": "#d97706",
+      "danger": "#dc2626"
+    },
+    "shell": {
+      "buttonText": "#ffffff",
+      "accentButtonText": "#3a2314",
+      "dockText": "#2d1f16",
+      "icon": "#a34a24",
+      "shadow": "#e7d9c6",
+      "shadowStrong": "#d6c2a8"
+    }
+  },
+  "typography": {
+    "headingFont": "Inter",
+    "bodyFont": "Inter",
+    "fontFamily": "\"Inter\", system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", Roboto, sans-serif"
+  },
+  "shell": {
+    "accentColor": "#e68a5a",
+    "dockStyle": "glass",
+    "pageBackground": "#faf7f2",
+    "gateBackground": "linear-gradient(135deg, #faf7f2, #f6efe5, #f9ece1)",
+    "panelBackground": "#fffdfa",
+    "panelStrongBackground": "#ffffff"
+  },
+  "cssVariables": {
+    "--space-brand-primary": "#c2572b",
+    "--space-brand-highlight": "#e68a5a",
+    "--space-brand-contrast": "#2d1f16",
+    "--space-brand-primary-50": "#faf1ea",
+    "--space-brand-primary-100": "#f4e0d2",
+    "--space-brand-primary-200": "#eac4ab",
+    "--space-brand-primary-500": "#cd6737",
+    "--space-brand-primary-600": "#c2572b",
+    "--space-brand-primary-700": "#a34a24",
+    "--space-brand-primary-900": "#6f3218",
+    "--space-brand-highlight-50": "#fdf4ed",
+    "--space-brand-highlight-100": "#fae5d7",
+    "--space-brand-highlight-200": "#f5ccb1",
+    "--space-brand-highlight-500": "#ea9a70",
+    "--space-brand-highlight-600": "#e68a5a",
+    "--space-brand-highlight-700": "#c97448",
+    "--space-brand-highlight-900": "#8f5230",
+    "--space-surface-page": "#faf7f2",
+    "--space-surface-page-alt": "#f3ede3",
+    "--space-surface-gradient-from": "#faf7f2",
+    "--space-surface-gradient-via": "#f6efe5",
+    "--space-surface-gradient-to": "#f9ece1",
+    "--space-surface-card": "#fffdfa",
+    "--space-surface-card-hover": "#fbf5ec",
+    "--space-surface-panel": "#fffdfa",
+    "--space-surface-panel-strong": "#ffffff",
+    "--space-surface-muted": "#f5efe6",
+    "--space-surface-accent-soft": "#f8e9dd",
+    "--space-border-default": "#e9dfd1",
+    "--space-border-strong": "#d9c9b5",
+    "--space-text-primary": "#2d1f16",
+    "--space-text-secondary": "#5c4838",
+    "--space-text-brand": "#a34a24",
+    "--space-text-accent": "#8a4520",
+    "--space-text-muted": "#8a7360",
+    "--space-text-on-primary": "#ffffff",
+    "--space-text-on-highlight": "#3a2314",
+    "--space-text-on-contrast": "#e68a5a",
+    "--space-semantic-success": "#16a34a",
+    "--space-semantic-warning": "#d97706",
+    "--space-semantic-danger": "#dc2626",
+    "--space-semantic-success-50": "#effaf1",
+    "--space-semantic-success-100": "#d8f2e0",
+    "--space-semantic-success-500": "#22c55e",
+    "--space-semantic-success-600": "#16a34a",
+    "--space-semantic-success-700": "#15803d",
+    "--space-semantic-warning-50": "#fdf6e9",
+    "--space-semantic-warning-100": "#faecd1",
+    "--space-semantic-warning-500": "#f59e0b",
+    "--space-semantic-warning-600": "#d97706",
+    "--space-semantic-warning-700": "#a16207",
+    "--space-semantic-danger-50": "#fdf1ef",
+    "--space-semantic-danger-100": "#fbe0dc",
+    "--space-semantic-danger-500": "#ef4444",
+    "--space-semantic-danger-600": "#dc2626",
+    "--space-semantic-danger-700": "#b91c1c",
+    "--space-shell-button-text": "#ffffff",
+    "--space-shell-accent-button-text": "#3a2314",
+    "--space-shell-dock-text": "#2d1f16",
+    "--space-shell-icon": "#a34a24",
+    "--space-shell-shadow": "#e7d9c6",
+    "--space-shell-shadow-strong": "#d6c2a8"
+  }
+};
+
+export default generatedSpaceTheme;
