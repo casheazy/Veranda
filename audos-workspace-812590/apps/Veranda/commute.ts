@@ -28,6 +28,13 @@
  *      - NO KEY, NO NUMBERS: while GOOGLE_MAPS_API_KEY is missing the hook
  *        reports blocked: 'unknown_secret', rows stay 'pending' and every
  *        card stays gray.
+ *      - STILL UNMEASURED as of 2026-08-05. The secret exists and the proxy
+ *        does forward it to routes.googleapis.com, but Google refuses the
+ *        call with PERMISSION_DENIED / API_KEY_SERVICE_BLOCKED, so all 102
+ *        rows across commute_routes, area_commutes and address_commute_routes
+ *        are 'pending' and no card has ever shown a measured number. The fix
+ *        is founder-side: add Routes API to the key's API restrictions in
+ *        Google Cloud Console (project 23743393754). No app change helps.
  *   2. SCHEDULES (task-scheduler), all daily Africa/Lagos, payload
  *      { mode: 'measure-areas', limit: 20 }:
  *      - "Veranda commute baseline measurement (morning)"
@@ -607,11 +614,15 @@ export async function requestAddressMeasurement(
 // in order:
 //   1. Google Places Autocomplete (New) through the platform secrets proxy
 //      using the founder's GOOGLE_MAPS_API_KEY (the same BYOK key the commute
-//      hook uses for routes.googleapis.com). The key currently allow-lists
-//      ONLY routes.googleapis.com, so this path answers `host_not_allowed`
-//      until places.googleapis.com is added to the key's allowed hosts — the
-//      moment it is, suggestions upgrade to Google automatically with no code
-//      change. One refusal disables the probe for the rest of the session.
+//      hook uses for routes.googleapis.com). TWO independent settings gate
+//      it, and both were still unmet when last checked (2026-08-05): the
+//      Audos secret must allow-list places.googleapis.com (today it lists
+//      only routes.googleapis.com, so the proxy answers `host_not_allowed`),
+//      AND the key's API restrictions in Google Cloud Console must include
+//      Places API (New). The request and response shapes below already match
+//      Google's documented Autocomplete (New) contract, so suggestions
+//      upgrade automatically once both land — no code change. One refusal
+//      disables the probe for the rest of the session.
 //   2. OpenStreetMap Nominatim — no key needed, CORS-open, restricted to
 //      Nigeria and bounded to the Lagos box (lat 6.3–6.7, lng 3.1–3.6).
 //      This is the provider actually serving suggestions today (verified
