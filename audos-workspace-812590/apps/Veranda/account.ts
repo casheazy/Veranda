@@ -183,6 +183,18 @@ export interface RenterAccountRow {
   work_destination?: string | null;
 }
 
+async function getWorkspaceDb(): Promise<any> {
+  // App effects can run a tick before the runtime attaches __workspaceDb,
+  // especially immediately after OTP sign-in. Treat that as initialization,
+  // not as a failed renter profile refresh.
+  for (const delayMs of [0, 75, 200, 500]) {
+    if (delayMs) await new Promise((resolve) => setTimeout(resolve, delayMs));
+    const db = (window as any).__workspaceDb;
+    if (db) return db;
+  }
+  throw new Error('Account data is temporarily unavailable.');
+}
+
 async function findRenterAccount(db: any, email: string): Promise<RenterAccountRow | null> {
   const { data } = await db
     .from('renter_accounts', { shared: true })
@@ -203,9 +215,7 @@ async function findRenterAccount(db: any, email: string): Promise<RenterAccountR
  * concurrent insert so subscription and unlock state remain untouched.
  */
 export async function ensureRenterAccount(email: string): Promise<RenterAccountRow> {
-  const db = (window as any).__workspaceDb;
-  if (!db) throw new Error('Account data is temporarily unavailable.');
-
+  const db = await getWorkspaceDb();
   const normalized = normalizeEmail(email);
   const existing = await findRenterAccount(db, normalized);
   if (existing) {
@@ -243,6 +253,24 @@ export async function ensureRenterAccount(email: string): Promise<RenterAccountR
   throw new Error('We could not finish setting up your renter account.');
 }
 
+export interface AccountUnlockAccessRow {
+  listing_id: number | null;
+  area_key: string | null;
+  address: string | null;
+  unlock_type: 'free' | 'subscription' | string;
+}
+
+/** Read the current server-side unlock set before spending a free report. */
+export async function fetchAccountUnlockAccess(email: string): Promise<AccountUnlockAccessRow[]> {
+  const db = await getWorkspaceDb();
+  const { data } = await db
+    .from('account_unlocks', { shared: true })
+    .eq('account_email', normalizeEmail(email))
+    .limit(500)
+    .get();
+  return Array.isArray(data) ? data : [];
+}
+
 export async function recordUnlock(params: {
   email: string;
   /** null for an address/area report, which has no listing behind it. */
@@ -252,8 +280,7 @@ export async function recordUnlock(params: {
   address: string | null;
   unlockType: 'free' | 'subscription';
 }): Promise<void> {
-  const db = (window as any).__workspaceDb;
-  if (!db) throw new Error('Data connection unavailable — please refresh and try again.');
+  const db = await getWorkspaceDb();
   await db.from('account_unlocks').insert({
     account_email: params.email,
     listing_id: params.listingId,
@@ -273,9 +300,8 @@ export async function recordUnlock(params: {
  * genuinely lands.
  */
 export async function saveWorkDestination(email: string, destination: string): Promise<void> {
-  const db = (window as any).__workspaceDb;
-  if (!db) throw new Error('Account data is temporarily unavailable. Please try again.');
   try {
+    const db = await getWorkspaceDb();
     const row = await ensureRenterAccount(email);
     await db.from('renter_accounts').update(row.id, {
       work_destination: destination.trim(),

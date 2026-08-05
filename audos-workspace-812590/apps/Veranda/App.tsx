@@ -59,6 +59,7 @@ import {
   clearPendingUnlock,
   clearStoredSession,
   ensureRenterAccount,
+  fetchAccountUnlockAccess,
   fetchSubscriptionStatus,
   isSubscriptionActive,
   normalizeEmail,
@@ -113,7 +114,6 @@ export default function VerandaApp() {
   const [subInfo, setSubInfo] = useState<SubscriptionInfo | null>(null);
   const [subLoading, setSubLoading] = useState(false);
   const [subError, setSubError] = useState<string | null>(null);
-  const [accountProvisionError, setAccountProvisionError] = useState<string | null>(null);
   const [accountRetryNonce, setAccountRetryNonce] = useState(0);
   // Set when we've just confirmed a paid checkout session directly with
   // Stripe but the subscription-status endpoint hasn't caught up yet.
@@ -130,7 +130,21 @@ export default function VerandaApp() {
     setSubLoading(true);
     setSubError(null);
     try {
-      setSubInfo(await fetchSubscriptionStatus(email));
+      // A just-restored session can race the platform route warming up. Retry
+      // short transient failures before surfacing a non-blocking sync notice.
+      let latest: SubscriptionInfo | null = null;
+      let lastError: unknown = null;
+      for (const delayMs of [0, 200, 600]) {
+        if (delayMs) await new Promise((resolve) => setTimeout(resolve, delayMs));
+        try {
+          latest = await fetchSubscriptionStatus(email);
+          break;
+        } catch (error) {
+          lastError = error;
+        }
+      }
+      if (!latest) throw lastError;
+      setSubInfo(latest);
     } catch {
       // Keep the previous value, but never silently treat a failed status read
       // as a canceled subscription or invite a duplicate checkout.
@@ -192,20 +206,15 @@ export default function VerandaApp() {
   // load (idempotently) instead of waiting for a workplace save to discover
   // the missing row.
   useEffect(() => {
-    if (!accountEmail) {
-      setAccountProvisionError(null);
-      return;
-    }
+    if (!accountEmail) return;
     let cancelled = false;
-    setAccountProvisionError(null);
     void ensureRenterAccount(accountEmail)
       .then(() => {
         if (!cancelled) accountRowHook.refresh();
       })
       .catch(() => {
-        if (!cancelled) {
-          setAccountProvisionError('Your renter profile could not be refreshed.');
-        }
+        // Preferences are optional personalization. Saving a workplace has its
+        // own retry UI; profile provisioning must not block report access.
       });
     return () => {
       cancelled = true;
@@ -213,14 +222,13 @@ export default function VerandaApp() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [accountEmail, accountRetryNonce]);
 
-  const accountError =
-    accountProvisionError ||
-    (accountRowHook.error ? 'Your saved renter preferences could not be refreshed.' : null) ||
-    (unlocksHook.error ? 'Your report history could not be refreshed.' : null) ||
-    subError;
+  // Renter preferences are optional report personalization. Their profile row
+  // must never block a signed-in renter from generating a verification report.
+  // Only unlock history and subscription status affect access decisions.
+  const accountAccessError =
+    (unlocksHook.error ? 'Your report history could not be refreshed.' : null) || subError;
 
   const retryAccountLoad = () => {
-    setAccountProvisionError(null);
     setSubError(null);
     setAccountRetryNonce((value) => value + 1);
     accountRowHook.refresh();
@@ -363,14 +371,36 @@ export default function VerandaApp() {
     setAccountEmail(null);
     setSubInfo(null);
     setSubError(null);
-    setAccountProvisionError(null);
     setSubOverride(false);
+  };
+
+  const resolveFreshAccess = async () => {
+    if (!accountEmail) throw new Error('Enter your email first.');
+    const currentUnlocks = await fetchAccountUnlockAccess(accountEmail);
+    const currentFreeUsed = currentUnlocks.filter((unlock) => unlock.unlock_type === 'free').length;
+    if (currentFreeUsed < FREE_UNLOCK_LIMIT) {
+      return { currentUnlocks, unlockType: 'free' as const };
+    }
+    if (subscribed) return { currentUnlocks, unlockType: 'subscription' as const };
+
+    // The UI keeps the previous status during a transient refresh failure. Do
+    // one authoritative check at click time before denying a paid subscriber.
+    const latestSub = await fetchSubscriptionStatus(accountEmail);
+    setSubInfo(latestSub);
+    setSubError(null);
+    if (isSubscriptionActive(latestSub)) {
+      return { currentUnlocks, unlockType: 'subscription' as const };
+    }
+    return { currentUnlocks, unlockType: null };
   };
 
   const handleUnlock = async (listing: Listing) => {
     if (!accountEmail) throw new Error('Enter your email first.');
-    if (isUnlocked(listing)) return;
-    const unlockType = subscribed ? 'subscription' : freeUsed < FREE_UNLOCK_LIMIT ? 'free' : null;
+    const { currentUnlocks, unlockType } = await resolveFreshAccess();
+    if (currentUnlocks.some((unlock) => unlock.listing_id === listing.id)) {
+      unlocksHook.refresh();
+      return;
+    }
     if (!unlockType) throw new Error('No free reports left — subscribe to keep unlocking.');
     await recordUnlock({
       email: accountEmail,
@@ -401,9 +431,20 @@ export default function VerandaApp() {
   };
 
   const handleUnlockArea = async () => {
-    if (!areaReport) return;
-    if (isAreaUnlocked(areaReport.areaKey, areaReport.address)) return;
-    const unlockType = subscribed ? 'subscription' : freeUsed < FREE_UNLOCK_LIMIT ? 'free' : null;
+    if (!areaReport || !accountEmail) return;
+    const { currentUnlocks, unlockType } = await resolveFreshAccess();
+    const normalizedAddress = areaReport.address.trim().toLowerCase();
+    if (
+      currentUnlocks.some(
+        (unlock) =>
+          unlock.listing_id == null &&
+          unlock.area_key === areaReport.areaKey &&
+          (unlock.address || '').trim().toLowerCase() === normalizedAddress
+      )
+    ) {
+      unlocksHook.refresh();
+      return;
+    }
     if (!unlockType) throw new Error('No free reports left — subscribe to keep unlocking.');
     await recordAreaUnlock(areaReport.areaKey, areaReport.address, unlockType);
   };
@@ -541,7 +582,7 @@ export default function VerandaApp() {
             freeUsed={freeUsed}
             subscribed={subscribed}
             accountLoading={unlocksHook.loading || subLoading}
-            accountError={accountError}
+            accountError={accountAccessError}
             onRetryAccount={retryAccountLoad}
             workDestination={(accountRowHook.data || [])[0]?.work_destination || null}
             onBack={() => setDetailListing(null)}
@@ -561,7 +602,7 @@ export default function VerandaApp() {
             freeUsed={freeUsed}
             subscribed={subscribed}
             accountLoading={unlocksHook.loading || subLoading}
-            accountError={accountError}
+            accountError={accountAccessError}
             onRetryAccount={retryAccountLoad}
             workDestination={(accountRowHook.data || [])[0]?.work_destination || null}
             onBack={() => goView('home')}
@@ -602,7 +643,7 @@ export default function VerandaApp() {
             unlocksLoading={unlocksHook.loading}
             subInfo={subInfo}
             subLoading={subLoading}
-            accountError={accountError}
+            accountError={accountAccessError}
             onRetryAccount={retryAccountLoad}
             isEntrepreneur={isEntrepreneur}
             workDestination={(accountRowHook.data || [])[0]?.work_destination || null}

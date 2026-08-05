@@ -353,7 +353,7 @@ interface ReportGateProps {
   subscribed: boolean;
   /** True while unlock rows / subscription status are still loading. */
   accountLoading: boolean;
-  /** A failed history/subscription read must block decisions based on stale counters. */
+  /** A failed history/subscription read shows a retry notice without replacing the report action. */
   accountError?: string | null;
   onRetryAccount?: () => void;
   onSignedIn: (email: string) => void;
@@ -453,6 +453,26 @@ export default function ReportGate({
         {/* Unlock overlay */}
         <div className="absolute inset-0 flex items-start justify-center p-3 pt-6">
           <div className={`${tw.card.elevated} p-5 w-full max-w-sm`}>
+            {accountEmail && !accountLoading && accountError && (
+              <div
+                className="mb-4 flex items-center justify-between gap-3 rounded-xl border border-[var(--space-border-default)] bg-[var(--space-surface-muted)] p-3"
+                role="status"
+                data-testid="report-account-sync-notice"
+              >
+                <p className={`text-[11px] leading-relaxed ${typography.color.muted}`}>
+                  Some access details are still syncing. You can continue below or retry the refresh.
+                </p>
+                {onRetryAccount && (
+                  <button
+                    onClick={onRetryAccount}
+                    className={`shrink-0 px-3 py-2 rounded-xl text-xs flex items-center justify-center gap-1.5 ${tw.button.secondary}`}
+                    data-testid="button-retry-report-account"
+                  >
+                    <RefreshCw className="w-3.5 h-3.5" /> Retry
+                  </button>
+                )}
+              </div>
+            )}
             {!accountEmail ? (
               <>
                 <div className={`w-11 h-11 rounded-2xl mb-3 flex items-center justify-center ${tw.bg.accent}`}>
@@ -472,25 +492,6 @@ export default function ReportGate({
               <div className="py-8 text-center">
                 <Loader2 className={`w-5 h-5 mx-auto animate-spin ${tw.icon.primary}`} />
                 <p className={`text-xs mt-2 ${typography.color.muted}`}>Checking your unlocks…</p>
-              </div>
-            ) : accountError ? (
-              <div className="py-5 text-center" role="alert" data-testid="report-account-error">
-                <div className={`w-11 h-11 mx-auto rounded-2xl flex items-center justify-center ${tw.bg.accent}`}>
-                  <Shield className={`w-5 h-5 ${tw.icon.primary}`} />
-                </div>
-                <p className={`text-sm mt-3 ${typography.weight.semibold} ${typography.color.primary}`}>
-                  We could not refresh your account just now
-                </p>
-                <p className={`text-xs mt-1.5 ${typography.color.muted}`}>{accountError}</p>
-                {onRetryAccount && (
-                  <button
-                    onClick={onRetryAccount}
-                    className={`mt-4 mx-auto px-4 py-2.5 rounded-xl text-xs flex items-center justify-center gap-1.5 ${tw.button.primary}`}
-                    data-testid="button-retry-report-account"
-                  >
-                    <RefreshCw className="w-3.5 h-3.5" /> Try again
-                  </button>
-                )}
               </div>
             ) : subscribed ? (
               <>

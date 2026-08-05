@@ -287,7 +287,7 @@ export default function AccountPage({
           <TriangleAlert className={`mt-0.5 w-4 h-4 shrink-0 ${typography.color.danger}`} />
           <div className="min-w-0 flex-1">
             <p className={`text-xs ${typography.weight.semibold} ${typography.color.primary}`}>
-              We could not refresh your account just now.
+              Some account details are still syncing.
             </p>
             <p className={`mt-1 text-[11px] ${typography.color.muted}`}>{accountError}</p>
             {onRetryAccount && (
