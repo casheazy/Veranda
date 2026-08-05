@@ -394,9 +394,10 @@ export const SUBSCRIPTION_CHARGE_CURRENCY: 'usd' | 'ngn' = 'usd';
  * veranda-fx-drift-check server-function hook, which reads this constant's
  * LIVE published value from the site bundle (so a rebase + publish retunes
  * the check by itself), sources the CBN official/NFEM and parallel/BDC
- * USD/NGN rates, and alerts the founder in Otto chat (+ email once
- * notifyEmail is set on the schedule payload) ONLY when either end drifts
- * more than ~2% from the naira price — with a suggested new cents figure. The
+ * USD/NGN rates, and keeps execution output in internal hook/scheduler logs.
+ * When notifyEmail is set on the schedule payload, it emails the founder ONLY
+ * when either end drifts more than ~2% from the naira price — with a suggested
+ * new cents figure. It never writes to customer or founder chat history. The
  * job never edits code; the rebase stays a manual, founder-reviewed change
  * here.
  */
