@@ -95,8 +95,13 @@ export default function SubmitReport({ presetAreaKey, presetStreet, onSubmitted 
         source_type: 'tenant',
         verified: false,
       };
+      // Community reports live in the SHARED pool (session_id = NULL): every
+      // visitor reads them with { shared: true }, and moderation updates or
+      // deletes them with { shared: true }. A default insert would tag the row
+      // with this visitor's session, hiding it from everyone else and making
+      // moderation writes fail with "Row not found".
       if (reportType === 'flood') {
-        await window.__workspaceDb.from('tenant_reports').insert({
+        await window.__workspaceDb.from('tenant_reports', { shared: true }).insert({
           ...base,
           report_type: 'flood',
           event_period: eventPeriod.trim(),
@@ -106,7 +111,7 @@ export default function SubmitReport({ presetAreaKey, presetStreet, onSubmitted 
           evidence_url: evidenceUrl.trim() || null,
         });
       } else {
-        await window.__workspaceDb.from('tenant_reports').insert({
+        await window.__workspaceDb.from('tenant_reports', { shared: true }).insert({
           ...base,
           report_type: 'power',
           avg_daily_hours: Math.min(24, Math.max(0, parseFloat(avgHours))),

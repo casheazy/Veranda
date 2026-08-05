@@ -175,7 +175,10 @@ export function ensureAreaProfilesSeeded(): Promise<boolean> {
       try {
         const { total } = await db.from('area_profiles', { shared: true }).limit(1).get();
         if ((total ?? 0) > 0) return false;
-        await db.from('area_profiles').bulkInsert(SEED_AREA_PROFILES);
+        // Insert into the SHARED pool (session_id = NULL) — a default insert
+        // would tag the rows with this visitor's session, making them invisible
+        // to every other visitor (and to the shared-count check above).
+        await db.from('area_profiles', { shared: true }).bulkInsert(SEED_AREA_PROFILES);
         return true;
       } catch (err) {
         // If we can't read the table, never blind-insert (avoids duplicates).
@@ -389,7 +392,8 @@ export function ensureTenantReportsSeeded(): Promise<boolean> {
       try {
         const { total } = await db.from('tenant_reports', { shared: true }).limit(1).get();
         if ((total ?? 0) > 0) return false;
-        await db.from('tenant_reports').bulkInsert(SEED_TENANT_REPORTS);
+        // Shared-pool insert — see the note in ensureAreaProfilesSeeded above.
+        await db.from('tenant_reports', { shared: true }).bulkInsert(SEED_TENANT_REPORTS);
         return true;
       } catch (err) {
         console.error('[Veranda] Tenant report seeding failed:', err);
