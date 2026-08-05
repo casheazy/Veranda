@@ -10,13 +10,16 @@
  *   pill: Good (green) / Fair (amber) / Watch out (red) / Improving (gray).
  *   "Improving" is used whenever confidence in the data is low — missing data
  *   must read as "not measured yet", never as a danger signal.
- * - Commute to work is public-transit first: total distance, a 7:30am weekday
- *   travel time, Lagos mode tags, and numbered board/alight steps. Driving is
- *   a comparison or the explicit coverage fallback when transit returns no
- *   route. Provider failures show a retryable unavailable state; no workplace
- *   shows the non-blocking “Add your workplace →” capture. Only REAL provider
- *   routes are shown — no straight-line guesses. “Change workplace” updates
- *   the account-level destination every report reads.
+ * - Commute is public-transit first: total distance, a 7:30am weekday travel
+ *   time, Lagos mode tags, and numbered board/alight steps. Driving is a
+ *   comparison or the explicit coverage fallback when transit returns no
+ *   route. Provider failures show a retryable unavailable state; with no
+ *   saved destination the card shows the non-blocking “Where do you commute
+ *   to?” capture. A destination is ANY labelled place the renter goes often
+ *   (work, school, market, church, family) — up to three per account,
+ *   switchable right on the card; the active one is what the card routes to.
+ *   Only REAL provider routes are shown — no straight-line guesses. Edits
+ *   update the account-level destinations every report reads.
  * - Network coverage is a per-carrier breakdown (MTN / Airtel / Glo /
  *   9mobile). Tiers come from a published-coverage-reports baseline and are
  *   superseded per carrier by live OpenCelliD cell-site lookups as those
@@ -61,6 +64,7 @@ import {
   asArray,
 } from './types';
 import { CoverageResolution, CoverageTier, resolveCoverage } from './coverage';
+import { CommuteDestination, MAX_COMMUTE_DESTINATIONS } from './account';
 
 // ---------------------------------------------------------------------------
 // Badge pills — the four confidence tones of the report
@@ -734,10 +738,18 @@ interface ReportViewProps {
    * When omitted the card renders the honest all-pending state.
    */
   coverage?: CoverageResolution | null;
-  /** The renter's saved "where do you work" destination, if any. */
-  workDestination?: string | null;
-  /** Save a work destination for this account (commute personalization). */
-  onSaveWorkDestination?: (destination: string) => void | Promise<void>;
+  /** The renter's saved commute destinations (label + address), if any. */
+  destinations?: CommuteDestination[];
+  /** Index of the saved destination the commute card currently routes to. */
+  activeDestinationIndex?: number;
+  /**
+   * Persist a destination for this account. `index` null appends a new
+   * destination (it becomes active); a number replaces that entry. Must
+   * THROW on failure so the editor can show the real reason inline.
+   */
+  onSaveDestination?: (dest: CommuteDestination, index: number | null) => void | Promise<void>;
+  /** Switch which saved destination the commute card routes to. */
+  onSelectDestination?: (index: number) => void | Promise<void>;
   /** Live provider request state when no cached route is available. */
   commuteRequestState?: 'idle' | 'loading' | 'error';
   /** Retry an unavailable or failed commute request. */
@@ -768,102 +780,220 @@ function SubmitReportPrompt({ label, onClick }: { label: string; onClick?: () =>
 }
 
 /**
- * Workplace capture + edit for the commute card. Saved once to the renter's
- * account (renter_accounts.work_destination) it powers every report; the
- * "Change workplace" link updates it any time and all reports follow
- * immediately, because the commute is a lookup, not stored per report.
+ * Destination capture + edit for the commute card. A destination is ANY place
+ * the renter commutes to — office, school, market, church, family house —
+ * saved with a short renter-chosen label to their account
+ * (renter_destinations snapshots, account.ts). Saved once, it powers every
+ * report; the commute is a lookup, not stored per report.
  */
-function WorkplaceEditor({
-  workplace,
+const LABEL_SUGGESTIONS = ['Work', 'School', 'Market', 'Church', 'Family'];
+
+export function DestinationEditor({
+  initial,
   onSave,
+  onCancel,
+  saveLabel = 'Save',
 }: {
-  workplace: string | null;
-  onSave: (destination: string) => void | Promise<void>;
+  initial?: CommuteDestination | null;
+  /** Must THROW on failure — the editor shows the error message inline. */
+  onSave: (dest: CommuteDestination) => void | Promise<void>;
+  onCancel?: () => void;
+  saveLabel?: string;
 }) {
-  const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState('');
+  const [label, setLabel] = useState(initial?.label || '');
+  const [address, setAddress] = useState(initial?.address || '');
   const [saving, setSaving] = useState(false);
-  const [justSaved, setJustSaved] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
 
   const save = async () => {
-    const dest = draft.trim();
-    if (!dest || saving) return;
+    if (saving) return;
+    if (!address.trim()) {
+      setSaveError('Enter the address or area you commute to.');
+      return;
+    }
     setSaving(true);
     setSaveError(null);
     try {
-      await Promise.resolve(onSave(dest));
-      setJustSaved(true);
-      setEditing(false);
+      await Promise.resolve(onSave({ label: label.trim() || 'Work', address: address.trim() }));
     } catch (error) {
-      setSaveError(error instanceof Error ? error.message : 'We could not save your workplace — please try again.');
+      setSaveError(
+        error instanceof Error ? error.message : 'We could not save this destination — please try again.'
+      );
     } finally {
       setSaving(false);
     }
   };
 
-  if (!workplace || editing) {
-    return (
-      <div className="mt-3" data-testid="workplace-editor">
-        <div className="flex gap-2">
-          <input
-            type="text"
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && save()}
-            placeholder="Address or area — e.g. Victoria Island or Ikeja"
-            className={`${tw.input.base} ${tw.input.default} text-xs rounded-xl py-2`}
-            data-testid="input-work-destination"
-          />
-          <button
-            onClick={save}
-            disabled={saving || !draft.trim()}
-            className={`shrink-0 px-3 py-2 rounded-xl text-xs flex items-center gap-1.5 ${tw.button.secondary} disabled:opacity-50`}
-            data-testid="button-save-work"
-          >
-            {saving && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
-            Save
-          </button>
-        </div>
-        {saveError && (
-          <p className={`mt-1.5 text-[11px] ${typography.color.danger}`} role="alert" data-testid="workplace-save-error">
-            {saveError}
-          </p>
-        )}
-        {editing && workplace && (
-          <button
-            onClick={() => {
-              setSaveError(null);
-              setEditing(false);
-            }}
-            className={`mt-1.5 py-1 text-[11px] underline underline-offset-2 ${typography.color.muted}`}
-            data-testid="button-cancel-change-workplace"
-          >
-            Keep “{workplace}”
-          </button>
-        )}
-      </div>
-    );
-  }
-
   return (
-    <div className="mt-2.5">
-      {justSaved && (
-        <p className={`text-xs mb-1 ${typography.color.success}`} data-testid="workplace-saved-note">
-          Workplace saved to your account — every report now uses it.
+    <div className="mt-3" data-testid="destination-editor">
+      <div className="flex gap-1.5 flex-wrap" aria-label="Quick labels">
+        {LABEL_SUGGESTIONS.map((suggestion) => (
+          <button
+            key={suggestion}
+            type="button"
+            onClick={() => setLabel(suggestion)}
+            className={`px-2.5 py-1 rounded-full text-[10px] ${typography.weight.medium} transition-colors ${
+              label === suggestion
+                ? `${tw.bg.accent} ${typography.color.brand}`
+                : `bg-[var(--space-surface-muted)] border border-[var(--space-border-default)] ${typography.color.secondary}`
+            }`}
+            data-testid={`destination-label-suggestion-${suggestion.toLowerCase()}`}
+          >
+            {suggestion}
+          </button>
+        ))}
+      </div>
+      <input
+        type="text"
+        value={label}
+        onChange={(e) => setLabel(e.target.value)}
+        placeholder="Label — e.g. Work, School, Mum's place"
+        maxLength={40}
+        className={`${tw.input.base} ${tw.input.default} text-xs rounded-xl py-2 mt-2`}
+        data-testid="input-destination-label"
+      />
+      <div className="flex gap-2 mt-2">
+        <input
+          type="text"
+          value={address}
+          onChange={(e) => setAddress(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && save()}
+          placeholder="Address or area — e.g. Victoria Island or Ikeja"
+          className={`${tw.input.base} ${tw.input.default} text-xs rounded-xl py-2`}
+          data-testid="input-destination-address"
+        />
+        <button
+          onClick={save}
+          disabled={saving || !address.trim()}
+          className={`shrink-0 px-3 py-2 rounded-xl text-xs flex items-center gap-1.5 ${tw.button.secondary} disabled:opacity-50`}
+          data-testid="button-save-destination"
+        >
+          {saving && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+          {saveLabel}
+        </button>
+      </div>
+      {saveError && (
+        <p className={`mt-1.5 text-[11px] ${typography.color.danger}`} role="alert" data-testid="destination-save-error">
+          {saveError}
         </p>
       )}
-      <button
-        onClick={() => {
-          setDraft(workplace);
-          setJustSaved(false);
-          setEditing(true);
-        }}
-        className={`py-1 text-xs underline underline-offset-2 ${typography.weight.medium} ${typography.color.brand}`}
-        data-testid="button-change-workplace"
-      >
-        Change workplace
-      </button>
+      {onCancel && (
+        <button
+          onClick={() => {
+            setSaveError(null);
+            onCancel();
+          }}
+          className={`mt-1.5 py-1 text-[11px] underline underline-offset-2 ${typography.color.muted}`}
+          data-testid="button-cancel-destination-editor"
+        >
+          Cancel
+        </button>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Saved-destination controls under the commute card: switch which saved
+ * destination the card routes to, change the current one, or add another
+ * (up to MAX_COMMUTE_DESTINATIONS).
+ */
+function DestinationControls({
+  destinations,
+  activeIndex,
+  onSelect,
+  onSave,
+}: {
+  destinations: CommuteDestination[];
+  activeIndex: number;
+  onSelect?: (index: number) => void | Promise<void>;
+  onSave?: (dest: CommuteDestination, index: number | null) => void | Promise<void>;
+}) {
+  const [editing, setEditing] = useState<'change' | 'add' | null>(null);
+  const [justSaved, setJustSaved] = useState(false);
+  const [switchError, setSwitchError] = useState<string | null>(null);
+  const active = destinations[activeIndex] || null;
+
+  const select = async (index: number) => {
+    if (!onSelect || index === activeIndex) return;
+    setSwitchError(null);
+    try {
+      await Promise.resolve(onSelect(index));
+    } catch (error) {
+      setSwitchError(
+        error instanceof Error ? error.message : 'Could not switch destination — please try again.'
+      );
+    }
+  };
+
+  return (
+    <div className="mt-2.5" data-testid="destination-controls">
+      {justSaved && (
+        <p className={`text-xs mb-1 ${typography.color.success}`} data-testid="destination-saved-note">
+          Destination saved to your account — every report can use it.
+        </p>
+      )}
+      {destinations.length > 1 && (
+        <div className="flex gap-1.5 flex-wrap mb-1.5" data-testid="destination-switcher">
+          {destinations.map((dest, i) => (
+            <button
+              key={`${dest.label}-${i}`}
+              onClick={() => select(i)}
+              className={`px-2.5 py-1 rounded-full text-[10px] ${typography.weight.semibold} transition-colors ${
+                i === activeIndex
+                  ? `${tw.bg.accent} ${typography.color.brand}`
+                  : `bg-[var(--space-surface-muted)] border border-[var(--space-border-default)] ${typography.color.secondary}`
+              }`}
+              data-testid={`destination-chip-${i}`}
+            >
+              {dest.label}
+            </button>
+          ))}
+        </div>
+      )}
+      {switchError && (
+        <p className={`text-[11px] mb-1 ${typography.color.danger}`} role="alert" data-testid="destination-switch-error">
+          {switchError}
+        </p>
+      )}
+      {onSave && editing === null && (
+        <div className="flex items-center gap-3 flex-wrap">
+          <button
+            onClick={() => {
+              setJustSaved(false);
+              setEditing('change');
+            }}
+            className={`py-1 text-xs underline underline-offset-2 ${typography.weight.medium} ${typography.color.brand}`}
+            data-testid="button-change-destination"
+          >
+            Change destination
+          </button>
+          {destinations.length < MAX_COMMUTE_DESTINATIONS && (
+            <button
+              onClick={() => {
+                setJustSaved(false);
+                setEditing('add');
+              }}
+              className={`py-1 text-xs underline underline-offset-2 ${typography.weight.medium} ${typography.color.brand}`}
+              data-testid="button-add-destination"
+            >
+              + Add another
+            </button>
+          )}
+        </div>
+      )}
+      {onSave && editing !== null && (
+        <DestinationEditor
+          initial={editing === 'change' ? active : null}
+          saveLabel={editing === 'change' ? 'Save' : 'Add'}
+          onSave={async (dest) => {
+            await Promise.resolve(onSave(dest, editing === 'change' ? activeIndex : null));
+            setEditing(null);
+            setJustSaved(true);
+          }}
+          onCancel={() => setEditing(null)}
+        />
+      )}
     </div>
   );
 }
@@ -875,17 +1005,25 @@ export default function ReportView({
   profile,
   reports,
   coverage,
-  workDestination,
-  onSaveWorkDestination,
+  destinations,
+  activeDestinationIndex,
+  onSaveDestination,
+  onSelectDestination,
   commuteRequestState = 'idle',
   onRetryCommute,
   onSubmitReport,
   communitySecuritySignal,
 }: ReportViewProps) {
-  // Optimistic copy of a just-saved workplace so the card reflects it before
-  // the parent's account-row refresh lands.
-  const [savedWorkplace, setSavedWorkplace] = useState<string | null>(null);
-  const workplace = savedWorkplace ?? workDestination ?? null;
+  // The parent (App.tsx) holds destination state optimistically, so this view
+  // just renders whichever destination is active.
+  const destinationList = destinations || [];
+  const activeIndex = Math.min(
+    Math.max(activeDestinationIndex ?? 0, 0),
+    Math.max(destinationList.length - 1, 0)
+  );
+  const activeDestination = destinationList[activeIndex] || null;
+  const workplace = activeDestination?.address || null;
+  const destinationLabel = activeDestination?.label || null;
 
   const floodReports = useMemo(
     () => reports.filter((r) => r.report_type === 'flood' && r.area_key === areaKey),
@@ -927,13 +1065,6 @@ export default function ReportView({
   const drivingDistanceKm = drivingRoute?.distanceKm ?? totalDistanceKm(drivingSteps);
   const routeDistanceKm = commute?.distanceKm ?? transitDistanceKm ?? drivingDistanceKm;
   const modeTags = commuteModes(transitSteps, transitMinutes == null);
-
-  const handleSaveWorkplace = onSaveWorkDestination
-    ? async (destination: string) => {
-        await Promise.resolve(onSaveWorkDestination(destination));
-        setSavedWorkplace(destination);
-      }
-    : undefined;
 
   return (
     <div className="space-y-3" data-testid="report-unlocked">
@@ -1136,19 +1267,21 @@ export default function ReportView({
         <DimensionCard
           testId="card-commute"
           icon={Briefcase}
-          dimension="Distance to work"
-          headline="Add your workplace →"
+          dimension="Commute Intelligence"
+          headline="Where do you commute to? →"
           tone="improving"
-          statusLabel="Add workplace"
-          detail="Save your work address once to see the BRT, bus, Danfo, Keke, ferry or rail route Lagos routing data can find from this property."
+          statusLabel="Add destination"
+          detail="Save any place you go often — your office, school, market, church or a family house — and this card shows the BRT, bus, Danfo, Keke, ferry or rail route Lagos routing data can find from this property. A short label like “Work” or “School” keeps it clear which trip you're seeing."
         >
-          {handleSaveWorkplace && <WorkplaceEditor workplace={null} onSave={handleSaveWorkplace} />}
+          {onSaveDestination && (
+            <DestinationEditor onSave={(dest) => Promise.resolve(onSaveDestination(dest, null))} />
+          )}
         </DimensionCard>
       ) : commute ? (
         <DimensionCard
           testId="card-commute"
           icon={transitMinutes != null ? Bus : Car}
-          dimension="Commute to work"
+          dimension={destinationLabel ? `Commute Intelligence · ${destinationLabel}` : 'Commute Intelligence'}
           headline={
             transitMinutes != null
               ? `~${transitMinutes} min by public transport · ${commute.driveMinutes} min drive`
@@ -1207,16 +1340,21 @@ export default function ReportView({
               defaultOpen={transitMinutes == null}
             />
           </div>
-          {handleSaveWorkplace && <WorkplaceEditor workplace={workplace} onSave={handleSaveWorkplace} />}
+          <DestinationControls
+            destinations={destinationList}
+            activeIndex={activeIndex}
+            onSelect={onSelectDestination}
+            onSave={onSaveDestination}
+          />
         </DimensionCard>
       ) : (
         <DimensionCard
           testId="card-commute"
           icon={Briefcase}
-          dimension="Distance to work"
+          dimension={destinationLabel ? `Commute Intelligence · ${destinationLabel}` : 'Commute Intelligence'}
           headline={
             commuteRequestState === 'loading'
-              ? `Finding your Lagos route to ${workplace}…`
+              ? `Finding your Lagos route to ${destinationLabel || workplace}…`
               : 'Commute info temporarily unavailable'
           }
           tone="improving"
@@ -1224,7 +1362,7 @@ export default function ReportView({
           detail={
             commuteRequestState === 'loading'
               ? 'Checking public transport first, then driving and walking as coverage fallback.'
-              : 'We could not load a route right now. Your workplace is still saved and no report access was affected.'
+              : 'We could not load a route right now. Your destination is still saved and no report access was affected.'
           }
         >
           <div className="mt-3 flex items-center gap-2 flex-wrap">
@@ -1242,7 +1380,12 @@ export default function ReportView({
               </button>
             ) : null}
           </div>
-          {handleSaveWorkplace && <WorkplaceEditor workplace={workplace} onSave={handleSaveWorkplace} />}
+          <DestinationControls
+            destinations={destinationList}
+            activeIndex={activeIndex}
+            onSelect={onSelectDestination}
+            onSave={onSaveDestination}
+          />
         </DimensionCard>
       )}
 
@@ -1391,7 +1534,7 @@ export default function ReportView({
       {/* Disclaimer — sits below all five dimensions */}
       <p className={`text-[10px] text-center leading-relaxed ${typography.color.muted}`} data-testid="report-disclaimer">
         Qualitative fields on this report are directional, not precise scores — they sharpen as more
-        verified lookups and tenant reports land for this street. Gray “Improving”, “Add workplace”
+        verified lookups and tenant reports land for this street. Gray “Improving”, “Add destination”
         and “Data unavailable” badges are neutral states, never danger signals.
       </p>
     </div>

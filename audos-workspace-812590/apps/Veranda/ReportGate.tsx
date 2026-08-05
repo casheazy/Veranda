@@ -336,7 +336,7 @@ type LockedDimension = { icon: typeof Droplets; label: string };
 const LOCKED_DIMENSIONS: LockedDimension[] = [
   { icon: Droplets, label: 'Flood risk' },
   { icon: Zap, label: 'Grid power' },
-  { icon: MapPin, label: 'Distance to work' },
+  { icon: MapPin, label: 'Commute Intelligence' },
   { icon: Wifi, label: 'Network coverage' },
   { icon: Shield, label: 'Security' },
 ];
@@ -426,7 +426,7 @@ export default function ReportGate({
             {teaserFlags} signal{teaserFlags > 1 ? 's' : ''} you should see before you sign anything
           </span>
           .{areaReportCount > 0 ? ` Backed by ${areaReportCount} tenant report${areaReportCount > 1 ? 's' : ''} on the ground.` : ''}{' '}
-          The full report always includes all five cards: flood, power, distance to work, network and security.
+          The full report always includes all five cards: flood, power, commute, network and security.
         </p>
       </div>
 

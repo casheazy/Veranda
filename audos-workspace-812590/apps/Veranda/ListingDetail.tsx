@@ -35,6 +35,7 @@ import {
   resolveCommute,
 } from './commute';
 import { AreaCoverageRow, requestCoverageCheck, resolveCoverage } from './coverage';
+import type { CommuteDestination } from './account';
 import ReportGate from './ReportGate';
 import ReportView from './ReportView';
 import ReportChat from './ReportChat';
@@ -58,11 +59,16 @@ interface ListingDetailProps {
   accountLoading: boolean;
   accountError?: string | null;
   onRetryAccount?: () => void;
+  /** ADDRESS of the active saved destination — drives the route machinery. */
   workDestination?: string | null;
+  /** All saved destinations + which one is active (card label and switcher). */
+  destinations?: CommuteDestination[];
+  activeDestinationIndex?: number;
+  onSaveDestination?: (dest: CommuteDestination, index: number | null) => void | Promise<void>;
+  onSelectDestination?: (index: number) => void | Promise<void>;
   onBack: () => void;
   onSignedIn: (email: string) => void;
   onUnlock: (listing: Listing) => Promise<void>;
-  onSaveWorkDestination?: (destination: string) => void;
   /** Opens the tenant submit-a-report flow for this home's area. */
   onSubmitReport?: (areaKey: AreaKey) => void;
 }
@@ -79,10 +85,13 @@ export default function ListingDetail({
   accountError,
   onRetryAccount,
   workDestination,
+  destinations,
+  activeDestinationIndex,
+  onSaveDestination,
+  onSelectDestination,
   onBack,
   onSignedIn,
   onUnlock,
-  onSaveWorkDestination,
   onSubmitReport,
 }: ListingDetailProps) {
   const [descExpanded, setDescExpanded] = useState(false);
@@ -321,7 +330,7 @@ export default function ListingDetail({
           <div className={`flex items-center gap-2 mb-3 p-2.5 rounded-xl ${tw.bg.accent} border border-[var(--space-border-default)]`}>
             <ShieldCheck className={`w-4 h-4 shrink-0 ${tw.icon.primary}`} />
             <p className={`text-xs ${typography.color.secondary}`}>
-              Veranda Verification Report — flood, power, distance to work, network & security{' '}
+              Veranda Verification Report — flood, power, commute intelligence, network & security{' '}
               {unlocked ? 'unlocked for this home.' : 'ready for this home.'}
             </p>
           </div>
@@ -335,8 +344,10 @@ export default function ListingDetail({
                 profile={profile}
                 reports={reports}
                 coverage={coverage}
-                workDestination={workDestination}
-                onSaveWorkDestination={onSaveWorkDestination}
+                destinations={destinations}
+                activeDestinationIndex={activeDestinationIndex}
+                onSaveDestination={onSaveDestination}
+                onSelectDestination={onSelectDestination}
                 commuteRequestState={commuteRequestState}
                 onRetryCommute={workDestination ? () => void loadCommute(true) : undefined}
                 onSubmitReport={onSubmitReport ? () => onSubmitReport(areaKey) : undefined}

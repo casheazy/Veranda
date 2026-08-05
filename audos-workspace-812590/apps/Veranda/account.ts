@@ -220,8 +220,10 @@ export async function ensureRenterAccount(email: string): Promise<RenterAccountR
   const existing = await findRenterAccount(db, normalized);
   if (existing) {
     // This timestamp is useful but must never make a valid account unreadable.
+    // shared: true — row updates are session-scoped by default, and the row
+    // may have been created in another browser session (another device).
     try {
-      await db.from('renter_accounts').update(existing.id, {
+      await db.from('renter_accounts', { shared: true }).update(existing.id, {
         last_seen_at: new Date().toISOString(),
       });
     } catch {}
@@ -291,40 +293,254 @@ export async function recordUnlock(params: {
   });
 }
 
-/**
- * Save the renter's "where do you work" destination on their account row,
- * looked up by email (and created via ensureRenterAccount when missing) —
- * safe to call even before the account row has loaded into any hook. The
- * destination powers the report's Distance-to-work card: the commute
- * pipeline measures real routes to it, and the card stays gray until one
- * genuinely lands.
- */
-export async function saveWorkDestination(email: string, destination: string): Promise<void> {
-  try {
-    const value = destination.trim().replace(/\s+/g, ' ');
-    if (value.length < 3 || value.length > 160) {
-      throw new Error('invalid workplace length');
+// ---------------------------------------------------------------------------
+// Commute destinations — labelled, up to MAX_COMMUTE_DESTINATIONS per account
+//
+// The commute card is not workplace-only: a destination is ANY place the
+// renter goes often (office, school, market, church, family), saved with a
+// short label the renter chooses ("Work", "School", "Mum's place").
+//
+// STORAGE (renter_destinations table, INSERT-ONLY snapshots):
+// WorkspaceDB row updates are session-scoped — an `update()` fired from a
+// browser session other than the one that created the row silently matches
+// nothing. That is exactly how the original renter_accounts.work_destination
+// save broke for renters returning on a new device/session: the update
+// missed, the read-back verification saw the old value, and the renter got
+// "We could not save your workplace." Snapshots dodge the problem entirely:
+// every save INSERTS a new row holding the full destinations array +
+// active_index, and readers take the newest row per account_email (shared
+// read), so the latest snapshot wins from any device. Superseded rows are
+// pruned best-effort and are harmless when pruning is skipped.
+// ---------------------------------------------------------------------------
+
+export interface CommuteDestination {
+  /** Short renter-chosen label, e.g. "Work", "School", "Mum's place". */
+  label: string;
+  /** The address or area the renter commutes to. */
+  address: string;
+}
+
+export interface DestinationState {
+  destinations: CommuteDestination[];
+  /** Index of the destination currently shown on report commute cards. */
+  activeIndex: number;
+}
+
+export const MAX_COMMUTE_DESTINATIONS = 3;
+
+/** Row shape of the insert-only `renter_destinations` snapshot table. */
+export interface RenterDestinationRow {
+  id: number;
+  account_email: string;
+  destinations?: CommuteDestination[] | string | null;
+  active_index?: number | null;
+  created_at?: string;
+}
+
+function cleanDestination(dest: CommuteDestination): CommuteDestination {
+  return {
+    label: (dest.label || '').trim().replace(/\s+/g, ' '),
+    address: (dest.address || '').trim().replace(/\s+/g, ' '),
+  };
+}
+
+/** Parse a snapshot row. Returns null for a missing or unreadable row. */
+export function parseDestinationRow(
+  row: RenterDestinationRow | null | undefined
+): DestinationState | null {
+  if (!row) return null;
+  let raw: unknown = row.destinations;
+  if (typeof raw === 'string') {
+    try {
+      raw = JSON.parse(raw);
+    } catch {
+      return null;
     }
-    const db = await getWorkspaceDb();
-    const row = await ensureRenterAccount(email);
-    await db.from('renter_accounts').update(row.id, {
-      work_destination: value,
+  }
+  const list = Array.isArray(raw)
+    ? (raw as CommuteDestination[])
+        .filter((d) => !!d && typeof d.address === 'string')
+        .map(cleanDestination)
+        .filter((d) => d.address.length > 0)
+        .slice(0, MAX_COMMUTE_DESTINATIONS)
+    : [];
+  const activeIndex = Math.min(
+    Math.max(Number(row.active_index) || 0, 0),
+    Math.max(list.length - 1, 0)
+  );
+  return { destinations: list, activeIndex };
+}
+
+/**
+ * Wrap a legacy renter_accounts.work_destination value as a single "Work"
+ * destination, so accounts from before the snapshot table still see their
+ * saved workplace. The first snapshot save takes over from there.
+ */
+export function destinationStateFromLegacy(
+  workDestination?: string | null
+): DestinationState | null {
+  const address = (workDestination || '').trim();
+  if (!address) return null;
+  return { destinations: [{ label: 'Work', address }], activeIndex: 0 };
+}
+
+function validateDestinationState(state: DestinationState): DestinationState {
+  const destinations = state.destinations.map(cleanDestination);
+  if (destinations.length > MAX_COMMUTE_DESTINATIONS) {
+    throw new Error(
+      `You can save up to ${MAX_COMMUTE_DESTINATIONS} destinations — remove one before adding another.`
+    );
+  }
+  for (const dest of destinations) {
+    if (dest.label.length < 1 || dest.label.length > 40) {
+      throw new Error(
+        "Give the destination a short label (1–40 characters) — e.g. Work, School or Mum's place."
+      );
+    }
+    if (dest.address.length < 3 || dest.address.length > 160) {
+      throw new Error(
+        'That address looks too short — enter the address or area, e.g. "Marina, Lagos Island".'
+      );
+    }
+  }
+  const activeIndex = Math.min(
+    Math.max(state.activeIndex, 0),
+    Math.max(destinations.length - 1, 0)
+  );
+  return { destinations, activeIndex };
+}
+
+function sameDestinationState(a: DestinationState, b: DestinationState): boolean {
+  return (
+    a.activeIndex === b.activeIndex &&
+    a.destinations.length === b.destinations.length &&
+    a.destinations.every(
+      (d, i) => d.label === b.destinations[i].label && d.address === b.destinations[i].address
+    )
+  );
+}
+
+async function fetchLatestDestinationRow(
+  db: any,
+  email: string
+): Promise<RenterDestinationRow | null> {
+  const { data } = await db
+    .from('renter_destinations', { shared: true })
+    .eq('account_email', normalizeEmail(email))
+    .orderBy('id', 'desc')
+    .limit(1)
+    .get();
+  return (data && data[0]) || null;
+}
+
+/** Read the saved destinations (falling back to the legacy work_destination). */
+export async function fetchDestinationState(email: string): Promise<DestinationState | null> {
+  const db = await getWorkspaceDb();
+  const parsed = parseDestinationRow(await fetchLatestDestinationRow(db, email));
+  if (parsed) return parsed;
+  const account = await findRenterAccount(db, email);
+  return destinationStateFromLegacy(account?.work_destination);
+}
+
+/**
+ * Persist the account's destinations by INSERTING a new snapshot row (see the
+ * section comment above for why updates are never used). The save is verified
+ * by reading the snapshot back before success is reported, and every failure
+ * path throws a message that says what actually went wrong.
+ */
+export async function saveDestinationState(email: string, state: DestinationState): Promise<void> {
+  const clean = validateDestinationState(state);
+  let db: any;
+  try {
+    db = await getWorkspaceDb();
+  } catch {
+    throw new Error('The data connection is still starting up — give it a second and try again.');
+  }
+  const normalized = normalizeEmail(email);
+
+  let previousId = 0;
+  try {
+    previousId = (await fetchLatestDestinationRow(db, normalized))?.id || 0;
+  } catch {
+    /* read-before-write is best-effort */
+  }
+
+  try {
+    // `destinations` is a JSON column, so the value MUST be pre-serialised
+    // with JSON.stringify. Passing the raw JS array made the platform bind it
+    // as a Postgres ARRAY literal ({"..."}), which the json column rejects
+    // with "invalid input syntax for type json" — the exact save failure
+    // renters hit. A JSON string is accepted, and parseDestinationRow()
+    // handles reading the column back as either a string or a parsed array.
+    // { shared: true } puts the snapshot in the shared pool (session_id =
+    // NULL), matching the shared reads below and letting the best-effort
+    // pruning delete superseded rows from any device/session.
+    await db.from('renter_destinations', { shared: true }).insert({
+      account_email: normalized,
+      destinations: JSON.stringify(clean.destinations),
+      active_index: clean.activeIndex,
+    });
+  } catch (error) {
+    const detail = error instanceof Error && error.message ? ` (${error.message})` : '';
+    throw new Error(
+      `Your destination could not be written to your renter profile${detail}. Check your connection and try again.`
+    );
+  }
+
+  // Verify the snapshot actually landed — this row is what every report (on
+  // any device) reads, so a save is only a save once it is readable.
+  let confirmed = false;
+  for (const delayMs of [0, 150, 400]) {
+    if (delayMs) await new Promise((resolve) => setTimeout(resolve, delayMs));
+    const row = await fetchLatestDestinationRow(db, normalized);
+    if (row && row.id !== previousId) {
+      const saved = parseDestinationRow(row);
+      if (saved && sameDestinationState(saved, clean)) {
+        confirmed = true;
+        break;
+      }
+    }
+  }
+  if (!confirmed) {
+    throw new Error(
+      'The save was sent but could not be confirmed in your renter profile, so it may not have persisted. Please try again.'
+    );
+  }
+
+  // Best-effort extras — never fail a confirmed save over them:
+  // 1 · mirror the active address into the legacy renter_accounts column so
+  //     anything still reading work_destination stays coherent;
+  // 2 · prune superseded snapshot rows (snapshots insert shared, so shared
+  //     deletes can remove them from any session; any legacy session-tagged
+  //     row that refuses to delete sits harmlessly behind the newest row).
+  try {
+    const account = await ensureRenterAccount(normalized);
+    await db.from('renter_accounts', { shared: true }).update(account.id, {
+      work_destination: clean.destinations[clean.activeIndex]?.address || null,
       last_seen_at: new Date().toISOString(),
     });
-    // Verify the upsert rather than assuming an SDK response means the shared
-    // renter profile was actually updated. This is the source every report
-    // reads after refresh and across devices.
-    let saved: RenterAccountRow | null = null;
-    for (const delayMs of [0, 100, 300]) {
-      if (delayMs) await new Promise((resolve) => setTimeout(resolve, delayMs));
-      saved = await findRenterAccount(db, email);
-      if (saved?.work_destination === value) break;
-    }
-    if (!saved || saved.work_destination !== value) {
-      throw new Error('workplace update was not persisted');
+  } catch {
+    /* legacy mirror only */
+  }
+  try {
+    const { data } = await db
+      .from('renter_destinations', { shared: true })
+      .eq('account_email', normalized)
+      .orderBy('id', 'desc')
+      .limit(25)
+      .get();
+    const rows: RenterDestinationRow[] = Array.isArray(data) ? data : [];
+    const newestId = rows[0]?.id || 0;
+    for (const row of rows) {
+      if (row.id === newestId) continue;
+      try {
+        await db.from('renter_destinations', { shared: true }).delete(row.id);
+      } catch {
+        /* cross-session rows won't delete — fine */
+      }
     }
   } catch {
-    throw new Error('We could not save your workplace. Please try again.');
+    /* pruning is optional */
   }
 }
 
