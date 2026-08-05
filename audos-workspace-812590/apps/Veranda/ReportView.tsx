@@ -32,7 +32,7 @@
  * Unlock gating lives in ReportGate.tsx — this component assumes the renter
  * already has access.
  */
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ComponentType, ReactNode } from 'react';
 import {
   Droplets,
@@ -48,6 +48,7 @@ import {
   Briefcase,
   ChevronDown,
   Loader2,
+  MapPin,
   PlusCircle,
   RefreshCw,
 } from 'lucide-react';
@@ -65,6 +66,7 @@ import {
 } from './types';
 import { CoverageResolution, CoverageTier, resolveCoverage } from './coverage';
 import { CommuteDestination, MAX_COMMUTE_DESTINATIONS } from './account';
+import { fetchDestinationSuggestions } from './commute';
 
 // ---------------------------------------------------------------------------
 // Badge pills — the four confidence tones of the report
@@ -785,6 +787,12 @@ function SubmitReportPrompt({ label, onClick }: { label: string; onClick?: () =>
  * saved with a short renter-chosen label to their account
  * (renter_destinations snapshots, account.ts). Saved once, it powers every
  * report; the commute is a lookup, not stored per report.
+ *
+ * The address input autocompletes real Lagos addresses as the renter types
+ * (fetchDestinationSuggestions in commute.ts — Google Places when the
+ * founder's key allows it, OpenStreetMap Nominatim otherwise): debounced
+ * 300ms, min 3 characters, tap or arrow-keys + Enter to fill the full
+ * formatted address. The label field stays plain free text.
  */
 const LABEL_SUGGESTIONS = ['Work', 'School', 'Market', 'Church', 'Family'];
 
@@ -804,6 +812,57 @@ export function DestinationEditor({
   const [address, setAddress] = useState(initial?.address || '');
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  // Address autocomplete state: suggestions for the CURRENT text, whether the
+  // dropdown is open, and which row the arrow keys have highlighted.
+  const [suggestions, setSuggestions] = useState<string[]>([]);
+  const [suggestionsOpen, setSuggestionsOpen] = useState(false);
+  const [highlightedIndex, setHighlightedIndex] = useState(-1);
+  const lookupRef = useRef<AbortController | null>(null);
+  // Suppress one lookup: starts true so the MOUNT run never pops the dropdown
+  // over a prefilled address (editing an existing destination), and picking a
+  // suggestion re-arms it so the pick doesn't immediately re-open the list.
+  const suppressLookupRef = useRef(true);
+
+  useEffect(() => {
+    if (suppressLookupRef.current) {
+      suppressLookupRef.current = false;
+      return;
+    }
+    const query = address.trim();
+    if (query.length < 3) {
+      lookupRef.current?.abort();
+      setSuggestions([]);
+      setSuggestionsOpen(false);
+      setHighlightedIndex(-1);
+      return;
+    }
+    const timer = setTimeout(async () => {
+      lookupRef.current?.abort();
+      const controller = new AbortController();
+      lookupRef.current = controller;
+      try {
+        const list = await fetchDestinationSuggestions(query, controller.signal);
+        if (controller.signal.aborted) return;
+        setSuggestions(list);
+        setSuggestionsOpen(list.length > 0);
+        setHighlightedIndex(-1);
+      } catch {
+        /* superseded lookup or offline — keep what is on screen */
+      }
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [address]);
+
+  // Abort any in-flight lookup when the editor unmounts.
+  useEffect(() => () => lookupRef.current?.abort(), []);
+
+  const chooseSuggestion = (suggestion: string) => {
+    suppressLookupRef.current = true;
+    setAddress(suggestion);
+    setSuggestions([]);
+    setSuggestionsOpen(false);
+    setHighlightedIndex(-1);
+  };
 
   const save = async () => {
     if (saving) return;
@@ -853,15 +912,74 @@ export function DestinationEditor({
         data-testid="input-destination-label"
       />
       <div className="flex gap-2 mt-2">
-        <input
-          type="text"
-          value={address}
-          onChange={(e) => setAddress(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && save()}
-          placeholder="Address or area — e.g. Victoria Island or Ikeja"
-          className={`${tw.input.base} ${tw.input.default} text-xs rounded-xl py-2`}
-          data-testid="input-destination-address"
-        />
+        <div className="relative flex-1 min-w-0">
+          <input
+            type="text"
+            value={address}
+            onChange={(e) => setAddress(e.target.value)}
+            onKeyDown={(e) => {
+              if (suggestionsOpen && suggestions.length > 0) {
+                if (e.key === 'ArrowDown') {
+                  e.preventDefault();
+                  setHighlightedIndex((i) => (i + 1) % suggestions.length);
+                  return;
+                }
+                if (e.key === 'ArrowUp') {
+                  e.preventDefault();
+                  setHighlightedIndex((i) => (i <= 0 ? suggestions.length - 1 : i - 1));
+                  return;
+                }
+                if (e.key === 'Escape') {
+                  setSuggestionsOpen(false);
+                  return;
+                }
+                if (e.key === 'Enter' && highlightedIndex >= 0) {
+                  e.preventDefault();
+                  chooseSuggestion(suggestions[highlightedIndex]);
+                  return;
+                }
+              }
+              if (e.key === 'Enter') save();
+            }}
+            onFocus={() => suggestions.length > 0 && setSuggestionsOpen(true)}
+            onBlur={() => setTimeout(() => setSuggestionsOpen(false), 150)}
+            placeholder="Address or area — type for Lagos suggestions"
+            role="combobox"
+            aria-expanded={suggestionsOpen}
+            aria-autocomplete="list"
+            className={`${tw.input.base} ${tw.input.default} text-xs rounded-xl py-2`}
+            data-testid="input-destination-address"
+          />
+          {suggestionsOpen && suggestions.length > 0 && (
+            <ul
+              className="absolute left-0 right-0 top-full mt-1 z-30 max-h-56 overflow-y-auto rounded-xl border border-[var(--space-border-default)] bg-[var(--space-surface-panel-strong)] shadow-lg"
+              role="listbox"
+              data-testid="destination-address-suggestions"
+            >
+              {suggestions.map((suggestion, i) => (
+                <li key={suggestion} role="option" aria-selected={i === highlightedIndex}>
+                  <button
+                    type="button"
+                    // onMouseDown (not onClick) so the pick lands before the
+                    // input's blur closes the dropdown.
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      chooseSuggestion(suggestion);
+                    }}
+                    onMouseEnter={() => setHighlightedIndex(i)}
+                    className={`w-full text-left px-3 py-2 text-xs flex items-start gap-1.5 transition-colors ${
+                      i === highlightedIndex ? 'bg-[var(--space-surface-accent-soft)]' : ''
+                    } ${typography.color.secondary}`}
+                    data-testid={`destination-address-suggestion-${i}`}
+                  >
+                    <MapPin className={`w-3 h-3 mt-0.5 shrink-0 ${tw.icon.primary}`} />
+                    <span className="min-w-0">{suggestion}</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
         <button
           onClick={save}
           disabled={saving || !address.trim()}

@@ -39,12 +39,21 @@
  *      Three runs/day × 20 routes fills the 92-row matrix in ~2 days once
  *      the key lands, then most runs are cheap no-ops (weekly refresh).
  *
- * DESTINATION CAPTURE (renter_accounts.work_destination):
- *   - Account page "Commute destination" card (AccountPage.tsx) — set or
- *     change it any time while signed in.
- *   - The gray "Distance to work" card on any unlocked report
- *     (ReportView.tsx) — first-time capture in context.
- *   Both persist via saveWorkDestination() in account.ts.
+ * DESTINATION CAPTURE (renter_destinations snapshots — see account.ts):
+ *   - A destination is ANY place the renter commutes to (office, school,
+ *     market, church, family), saved with a short renter-chosen label
+ *     ("Work", "School", "Mum's place"). Up to MAX_COMMUTE_DESTINATIONS per
+ *     account; the ACTIVE one is what the report card routes to, switchable
+ *     right on the card.
+ *   - Account page "Commute destinations" card (AccountPage.tsx) — add,
+ *     edit, remove or switch destinations any time while signed in.
+ *   - The gray commute card on any unlocked report (ReportView.tsx) —
+ *     first-time capture in context.
+ *   All persist via saveDestinationState() in account.ts — insert-only
+ *   snapshots (row UPDATES are session-scoped and silently miss rows created
+ *   on another device; that was the old "could not save your workplace" bug).
+ *   The legacy renter_accounts.work_destination column is kept mirrored to
+ *   the active destination, best-effort, for anything still reading it.
  *
  * CLIENT RESOLUTION ORDER (resolveCommute below):
  *   1. Exact measured route for THIS listing + the renter's saved work
@@ -383,4 +392,163 @@ export async function requestAddressMeasurement(
 ): Promise<CommuteMeasurementRequestResult> {
   const key = `address:${normDest(origin)}::${normDest(destination)}`;
   return requestMeasurement(key, { mode: 'measure-address', origin, destination }, force);
+}
+
+// ---------------------------------------------------------------------------
+// Destination address autocomplete (DestinationEditor in ReportView.tsx,
+// reused by the Account page's "Commute destinations" card)
+//
+// As the renter types a destination address the editor offers real Lagos
+// address suggestions to tap — no full manual typing, no typos. PROVIDERS,
+// in order:
+//   1. Google Places Autocomplete (New) through the platform secrets proxy
+//      using the founder's GOOGLE_MAPS_API_KEY (the same BYOK key the commute
+//      hook uses for routes.googleapis.com). The key currently allow-lists
+//      ONLY routes.googleapis.com, so this path answers `host_not_allowed`
+//      until places.googleapis.com is added to the key's allowed hosts — the
+//      moment it is, suggestions upgrade to Google automatically with no code
+//      change. One refusal disables the probe for the rest of the session.
+//   2. OpenStreetMap Nominatim — no key needed, CORS-open, restricted to
+//      Nigeria and bounded to the Lagos box (lat 6.3–6.7, lng 3.1–3.6).
+//      This is the provider actually serving suggestions today (verified
+//      2026-08-05: real results for e.g. "Adeola Odeku").
+// The caller debounces (~300ms, min 3 chars); this module never fires a
+// request per keystroke on its own. Suggestions are an accelerator, never a
+// gate: free-typed area names keep working exactly as before.
+// ---------------------------------------------------------------------------
+
+const LAGOS_CENTER = { latitude: 6.5244, longitude: 3.3792 };
+/** Nominatim viewbox — left,top,right,bottom of the Lagos bounding box. */
+const LAGOS_VIEWBOX = '3.1,6.7,3.6,6.3';
+const MAX_SUGGESTIONS = 6;
+/** Matches the address length limit in account.ts's validateDestinationState. */
+const MAX_SUGGESTION_LENGTH = 160;
+
+/** Set after the secrets proxy refuses (host not allow-listed / key missing)
+ * so a session probes Google Places at most once, not on every lookup. */
+let googlePlacesUnavailable = false;
+
+/** Keep a suggestion under the saveable length by dropping trailing segments. */
+function clampSuggestion(text: string): string {
+  let out = text.trim();
+  while (out.length > MAX_SUGGESTION_LENGTH && out.includes(',')) {
+    out = out.slice(0, out.lastIndexOf(',')).trim();
+  }
+  return out.length > MAX_SUGGESTION_LENGTH ? '' : out;
+}
+
+function dedupeSuggestions(list: Array<string | null | undefined>): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const item of list) {
+    const text = clampSuggestion(item || '');
+    if (!text) continue;
+    const key = text.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(text);
+    if (out.length >= MAX_SUGGESTIONS) break;
+  }
+  return out;
+}
+
+function isAbortError(error: unknown): boolean {
+  return error instanceof DOMException && error.name === 'AbortError';
+}
+
+/** Google Places (New) autocomplete via the secrets proxy. Returns null when
+ * the provider is unavailable so the caller can fall back to Nominatim. */
+async function googlePlacesSuggestions(
+  input: string,
+  signal?: AbortSignal
+): Promise<string[] | null> {
+  if (googlePlacesUnavailable) return null;
+  const token = (window as any).__workspaceDb?.token;
+  if (!token) return null;
+  try {
+    const res = await fetch(`/api/workspaces/${WORKSPACE_ID}/secrets/proxy`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Workspace-DB-Token': token },
+      signal,
+      body: JSON.stringify({
+        method: 'POST',
+        url: 'https://places.googleapis.com/v1/places:autocomplete',
+        headers: { 'X-Goog-Api-Key': '{{secrets.GOOGLE_MAPS_API_KEY}}' },
+        json: {
+          input,
+          includedRegionCodes: ['NG'],
+          locationBias: { circle: { center: LAGOS_CENTER, radius: 50000 } },
+        },
+      }),
+    });
+    const data = await res.json().catch(() => null);
+    // Proxy refusal (host_not_allowed / unknown secret) or an upstream
+    // auth/quota failure — stop probing Google for the rest of the session.
+    if (!res.ok || !data || data.status !== 200) {
+      googlePlacesUnavailable = true;
+      return null;
+    }
+    const suggestions = Array.isArray(data.body?.suggestions) ? data.body.suggestions : [];
+    return dedupeSuggestions(
+      suggestions.map((s: any) => s?.placePrediction?.text?.text as string | undefined)
+    );
+  } catch (error) {
+    if (isAbortError(error)) throw error;
+    return null; // network hiccup — let Nominatim answer
+  }
+}
+
+/** OpenStreetMap Nominatim, Lagos-bounded. The no-key fallback that works today. */
+async function nominatimSuggestions(input: string, signal?: AbortSignal): Promise<string[]> {
+  const params = new URLSearchParams({
+    format: 'jsonv2',
+    q: input,
+    countrycodes: 'ng',
+    viewbox: LAGOS_VIEWBOX,
+    bounded: '1',
+    limit: String(MAX_SUGGESTIONS),
+    addressdetails: '0',
+  });
+  try {
+    const res = await fetch(`https://nominatim.openstreetmap.org/search?${params.toString()}`, {
+      signal,
+      headers: { Accept: 'application/json' },
+    });
+    if (!res.ok) return [];
+    const rows = await res.json().catch(() => []);
+    if (!Array.isArray(rows)) return [];
+    return dedupeSuggestions(
+      rows.map((row: any) => {
+        const name = (row?.display_name || '') as string;
+        // Drop the trailing postcode + country ("…, 101241, Nigeria") — noise
+        // in a Lagos-only picker, and it keeps suggestions comfortably inside
+        // the 160-character save limit.
+        return name
+          .split(',')
+          .map((part: string) => part.trim())
+          .filter((part: string) => part && part !== 'Nigeria' && !/^\d{5,6}$/.test(part))
+          .join(', ');
+      })
+    );
+  } catch (error) {
+    if (isAbortError(error)) throw error;
+    return [];
+  }
+}
+
+/**
+ * Lagos-biased address suggestions for the destination editor. Tries Google
+ * Places (founder's key via the secrets proxy) first and falls back to
+ * OpenStreetMap Nominatim. Returns [] when neither has a match. Rethrows
+ * AbortError so a superseded lookup never paints stale suggestions.
+ */
+export async function fetchDestinationSuggestions(
+  input: string,
+  signal?: AbortSignal
+): Promise<string[]> {
+  const query = input.trim();
+  if (query.length < 3) return [];
+  const google = await googlePlacesSuggestions(query, signal);
+  if (google && google.length > 0) return google;
+  return nominatimSuggestions(query, signal);
 }
