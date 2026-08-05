@@ -30,7 +30,6 @@ import {
   Listing,
   SUBSCRIPTION_PRICE_NGN,
   TenantReport,
-  UNLOCK_PRICE_NGN,
   areaName,
 } from './types';
 import { AreaCoverageRow, resolveCoverage } from './coverage';
@@ -137,7 +136,7 @@ export default function SampleReport({ profile, reports, onBack, onGetYours }: S
       {/* Conversion CTA — routes to the normal search → unlock flow */}
       <div className={`${tw.card.default} rounded-2xl p-5 mt-4 text-center`} data-testid="sample-report-cta">
         <p className={`text-base ${typography.weight.bold} ${typography.color.primary}`}>
-          Get this report for your property — ₦{UNLOCK_PRICE_NGN.toLocaleString()}
+          Get this report free — first {FREE_UNLOCK_LIMIT} on us
         </p>
         <p className={`text-xs mt-1.5 leading-relaxed ${typography.color.muted}`}>
           Launch offer: your first {FREE_UNLOCK_LIMIT} reports are free with just your email — then
@@ -148,7 +147,7 @@ export default function SampleReport({ profile, reports, onBack, onGetYours }: S
           className={`mt-3.5 w-full py-3.5 rounded-xl text-sm flex items-center justify-center gap-2 ${tw.button.primary}`}
           data-testid="button-sample-unlock"
         >
-          Unlock Your Report <ArrowRight className="w-4 h-4" />
+          Unlock Your Free Report <ArrowRight className="w-4 h-4" />
         </button>
         <p className={`flex items-center justify-center gap-1 text-[10px] mt-2.5 ${typography.color.muted}`}>
           <ShieldCheck className="w-3 h-3" /> Searching any address is free — no card needed to start.
