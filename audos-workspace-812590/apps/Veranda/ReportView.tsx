@@ -687,6 +687,13 @@ interface ReportViewProps {
   onSaveWorkDestination?: (destination: string) => void | Promise<void>;
   /** Opens the tenant submit-a-report flow, prefilled for this area. */
   onSubmitReport?: () => void;
+  /**
+   * Community-sourced qualitative security signal (used by the public sample
+   * report). When set, the security card leads with this line under a
+   * "Community-sourced" label instead of the listing-amenities view. The
+   * badge stays the neutral gray tone — security is still never scored.
+   */
+  communitySecuritySignal?: string | null;
 }
 
 function SubmitReportPrompt({ label, onClick }: { label: string; onClick?: () => void }) {
@@ -814,6 +821,7 @@ export default function ReportView({
   workDestination,
   onSaveWorkDestination,
   onSubmitReport,
+  communitySecuritySignal,
 }: ReportViewProps) {
   // Optimistic copy of a just-saved workplace so the card reflects it before
   // the parent's account-row refresh lands.
@@ -1211,6 +1219,17 @@ export default function ReportView({
       </DimensionCard>
 
       {/* ------------------------- 6 · SECURITY ------------------------- */}
+      {communitySecuritySignal ? (
+        <DimensionCard
+          testId="card-security"
+          icon={Shield}
+          dimension="Security"
+          headline={communitySecuritySignal}
+          tone="improving"
+          statusLabel="Community-sourced"
+          detail="Community-sourced signal from residents and tenant reports — not an official crime statistic, and not independently verified by Veranda. Always walk the street yourself, ideally after dark, before you sign."
+        />
+      ) : (
       <DimensionCard
         testId="card-security"
         icon={Shield}
@@ -1250,6 +1269,7 @@ export default function ReportView({
           </p>
         )}
       </DimensionCard>
+      )}
 
       {/* Sources */}
       {sources.length > 0 && (

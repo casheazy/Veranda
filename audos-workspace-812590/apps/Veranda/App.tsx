@@ -31,6 +31,7 @@ import {
   UserRound,
   ArrowRight,
   Droplets,
+  Eye,
   PlusCircle,
   Ticket,
   Wallet,
@@ -70,6 +71,7 @@ import { ListingCard, ListingCardSkeleton, cleanScrapedText } from './listingDis
 import ListingDetail from './ListingDetail';
 import AreaReport from './AreaReport';
 import SubmitReport from './SubmitReport';
+import SampleReport, { SAMPLE_AREA_KEY } from './SampleReport';
 import AccountPage from './AccountPage';
 import AdminDashboard from './AdminDashboard';
 
@@ -78,7 +80,7 @@ const HERO_IMAGE_URL =
 
 const POPULAR_AREAS: AreaKey[] = ['lekki', 'ajah', 'yaba', 'surulere', 'ikeja', 'victoria-island'];
 
-type View = 'home' | 'browse' | 'verify' | 'submit' | 'account' | 'admin';
+type View = 'home' | 'browse' | 'verify' | 'submit' | 'account' | 'admin' | 'sample';
 
 interface AreaReportTarget {
   areaKey: AreaKey;
@@ -503,9 +505,10 @@ export default function VerandaApp() {
     return () => window.removeEventListener('audos:app-navigate', onNavigate);
   }, []);
 
-  // The Verify tab owns both the search landing and the report it opens.
+  // The Verify tab owns the search landing, the report it opens and the
+  // public sample report reached from the landing page.
   const isTabActive = (tab: View) =>
-    tab === 'home' ? view === 'home' || view === 'verify' : view === tab;
+    tab === 'home' ? view === 'home' || view === 'verify' || view === 'sample' : view === tab;
 
   // ---------------- browse results ----------------
   const results = useMemo(() => {
@@ -569,6 +572,13 @@ export default function VerandaApp() {
           />
         ) : view === 'submit' ? (
           <SubmitReport presetAreaKey={submitPreset} onSubmitted={() => reportsHook.refresh()} />
+        ) : view === 'sample' ? (
+          <SampleReport
+            profile={profileFor(SAMPLE_AREA_KEY)}
+            reports={reportsHook.data || []}
+            onBack={() => goView('home')}
+            onGetYours={() => goView('home')}
+          />
         ) : view === 'home' ? (
           <LandingView
             query={homeQuery}
@@ -583,6 +593,7 @@ export default function VerandaApp() {
               setView('browse');
             }}
             onSubmitReport={() => openSubmitReport(null)}
+            onSeeSample={() => goView('sample')}
           />
         ) : view === 'account' ? (
           <AccountPage
@@ -665,6 +676,7 @@ function LandingView({
   onPickArea,
   onBrowseAll,
   onSubmitReport,
+  onSeeSample,
 }: {
   query: string;
   onQueryChange: (q: string) => void;
@@ -673,6 +685,7 @@ function LandingView({
   onPickArea: (key: AreaKey) => void;
   onBrowseAll: () => void;
   onSubmitReport: () => void;
+  onSeeSample: () => void;
 }) {
   return (
     <div className="pb-6 max-w-2xl mx-auto">
@@ -723,6 +736,26 @@ function LandingView({
             {notice}
           </p>
         )}
+
+        {/* Sample report — the no-account, no-payment proof of what a report delivers */}
+        <button
+          onClick={onSeeSample}
+          className="mt-2.5 w-full flex items-center gap-3 p-3 rounded-xl border border-[var(--space-brand-highlight-200)] bg-[var(--space-surface-accent-soft)] hover:brightness-[0.98] transition-all text-left"
+          data-testid="button-see-sample-report"
+        >
+          <span className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0 bg-[var(--space-surface-card)] border border-[var(--space-border-default)]">
+            <Eye className={`w-4 h-4 ${tw.icon.primary}`} />
+          </span>
+          <span className="flex-1 min-w-0">
+            <span className={`block text-sm ${typography.weight.semibold} ${typography.color.primary}`}>
+              See a sample report →
+            </span>
+            <span className={`block text-[11px] mt-0.5 leading-relaxed ${typography.color.muted}`}>
+              A real report for a Surulere address, fully opened — no account, no payment.
+            </span>
+          </span>
+        </button>
+
         <p className={`text-[11px] mt-2.5 ${typography.color.muted}`}>Or start from a covered area:</p>
         <div className="flex gap-1.5 mt-1.5 flex-wrap">
           {POPULAR_AREAS.map((key) => (
