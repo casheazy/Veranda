@@ -11,11 +11,11 @@
  * listing report (5 free unlocks per account, then the subscription), so an
  * address report and a listing report cost a renter exactly the same thing.
  */
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowLeft, Droplets, MapPin, PlusCircle, ShieldCheck, Users, Zap } from 'lucide-react';
 import { tw, typography } from '../../lib/colors';
 import { AreaKey, AreaProfile, Listing, TenantReport, areaName } from './types';
-import { AreaCommuteRow, resolveCommute } from './commute';
+import { AreaCommuteRow, CommutePayload, requestAddressMeasurement, resolveCommute } from './commute';
 import { AreaCoverageRow, requestCoverageCheck, resolveCoverage } from './coverage';
 import ReportGate from './ReportGate';
 import ReportView from './ReportView';
@@ -85,13 +85,43 @@ export default function AreaReport({
     () => resolveCommute(addressListing, workDestination, [], areaRoutesHook.data),
     [addressListing, workDestination, areaRoutesHook.data]
   );
-  const reportListing = useMemo<Listing>(
-    () =>
-      commuteResolution.payload
-        ? { ...addressListing, commute: commuteResolution.payload }
-        : addressListing,
-    [addressListing, commuteResolution.payload]
-  );
+  const [liveCommute, setLiveCommute] = useState<CommutePayload | null>(null);
+  const [commuteRequestState, setCommuteRequestState] = useState<'idle' | 'loading' | 'error'>('idle');
+  const commuteRequestKeyRef = useRef('');
+
+  const loadAddressCommute = async (force = false) => {
+    if (!workDestination) return;
+    const key = `${address.trim().toLowerCase()}::${workDestination.trim().toLowerCase()}`;
+    if (!force && commuteRequestKeyRef.current === key) return;
+    commuteRequestKeyRef.current = key;
+    setCommuteRequestState('loading');
+    const result = await requestAddressMeasurement(address, workDestination, force);
+    if (result.commute) {
+      setLiveCommute(result.commute);
+      setCommuteRequestState('idle');
+    } else {
+      setCommuteRequestState('error');
+    }
+  };
+
+  useEffect(() => {
+    setLiveCommute(null);
+    setCommuteRequestState('idle');
+    commuteRequestKeyRef.current = '';
+  }, [address, workDestination]);
+
+  useEffect(() => {
+    if (!unlocked || !workDestination || areaRoutesHook.loading) return;
+    // Even when a measured area baseline is available, request the exact typed
+    // property address; the baseline remains a useful instant fallback.
+    void loadAddressCommute();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [unlocked, address, workDestination, areaRoutesHook.loading]);
+
+  const reportListing = useMemo<Listing>(() => {
+    const payload = liveCommute || commuteResolution.payload;
+    return payload ? { ...addressListing, commute: payload } : addressListing;
+  }, [addressListing, liveCommute, commuteResolution.payload]);
 
   // Use the same per-carrier ISP/mobile coverage lookup as listing reports.
   // Published-report baselines render immediately; a live lookup is requested
@@ -183,6 +213,8 @@ export default function AreaReport({
               coverage={coverage}
               workDestination={workDestination}
               onSaveWorkDestination={onSaveWorkDestination}
+              commuteRequestState={commuteRequestState}
+              onRetryCommute={workDestination ? () => void loadAddressCommute(true) : undefined}
               onSubmitReport={onSubmitReport}
             />
             <ReportChat

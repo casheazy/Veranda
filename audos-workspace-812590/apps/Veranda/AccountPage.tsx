@@ -182,16 +182,15 @@ function WorkDestinationCard({
           )}
           {hub && (
             <p className={`text-[11px] mt-1 ${typography.color.muted}`}>
-              Matches the {hub.label} work hub — measured area baselines cover it as they land.
+              Matches the {hub.label} work hub — exact property routes take priority, with this measured area baseline as fallback.
             </p>
           )}
         </>
       )}
 
       <p className={`text-[11px] mt-2 ${typography.color.muted}`}>
-        Powers the “Distance to work” card on every report you unlock. We only show real routes
-        measured in live Lagos traffic — until your route has been measured, the card stays gray
-        rather than guessing.
+        Powers the commute card on every report you unlock. Veranda checks Lagos public transport
+        first — BRT, bus, ferry and rail where available — then adds a driving fallback for coverage gaps.
       </p>
     </div>
   );

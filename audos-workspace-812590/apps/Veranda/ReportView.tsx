@@ -10,16 +10,13 @@
  *   pill: Good (green) / Fair (amber) / Watch out (red) / Improving (gray).
  *   "Improving" is used whenever confidence in the data is low — missing data
  *   must read as "not measured yet", never as a danger signal.
- * - Distance to work shows a real step-by-step commute once the renter has a
- *   saved workplace: a bold "~X min by car · ~Y min by bus" headline, a
- *   collapsible By-car section (turn-by-turn steps + total distance, labelled
- *   typical Lagos traffic) and a By-bus section that is never hidden (gray
- *   "Public transit route not available" line when no transit data exists).
- *   The badge comes from the car time: <30 min Good, 30–60 Fair, >60 Watch
- *   out; gray "Add workplace" before a workplace is saved. Only REAL measured
- *   routes are shown — no straight-line guesses; unmeasured routes show gray
- *   "Commute data unavailable". A "Change workplace" link updates the
- *   account-level workplace every report reads (a lookup, not per-report).
+ * - Commute to work is public-transit first: total distance, a 7:30am weekday
+ *   travel time, Lagos mode tags, and numbered board/alight steps. Driving is
+ *   a comparison or the explicit coverage fallback when transit returns no
+ *   route. Provider failures show a retryable unavailable state; no workplace
+ *   shows the non-blocking “Add your workplace →” capture. Only REAL provider
+ *   routes are shown — no straight-line guesses. “Change workplace” updates
+ *   the account-level destination every report reads.
  * - Network coverage is a per-carrier breakdown (MTN / Airtel / Glo /
  *   9mobile). Tiers come from a published-coverage-reports baseline and are
  *   superseded per carrier by live OpenCelliD cell-site lookups as those
@@ -49,6 +46,7 @@ import {
   ChevronDown,
   Loader2,
   PlusCircle,
+  RefreshCw,
 } from 'lucide-react';
 import { tw, typography } from '../../lib/colors';
 import {
@@ -206,24 +204,29 @@ function powerPresentation(
 // gray state when not — never a straight-line guess)
 // ---------------------------------------------------------------------------
 
+type LagosMode = 'walk' | 'brt' | 'bus' | 'danfo' | 'keke' | 'ferry' | 'rail' | 'drive' | 'transit';
+
 interface CommuteStep {
   instruction: string;
   line?: string | null;
   distance?: string | null;
   duration?: string | null;
+  mode?: LagosMode | null;
 }
 
 interface CommuteRoute {
   mode: string; // 'driving' | 'transit'
   minutes?: number | null;
+  distanceKm?: number | null;
   steps?: CommuteStep[] | null;
 }
 
 interface CommuteInfo {
   driveMinutes: number;
   destination?: string | null;
+  distanceKm?: number | null;
   routes: CommuteRoute[];
-  /** e.g. 'typical weekday-morning traffic' — set by the measurement pipeline. */
+  /** e.g. 'typical weekday 7:30am Lagos conditions'. */
   trafficLabel?: string | null;
   /** Honest provenance line (what was measured, from where, when). */
   measuredNote?: string | null;
@@ -264,6 +267,7 @@ function parseCommute(listing?: Listing | null, profile?: AreaProfile): CommuteI
   return {
     driveMinutes,
     destination: typeof obj.destination === 'string' ? obj.destination : null,
+    distanceKm: typeof obj.distanceKm === 'number' ? obj.distanceKm : null,
     routes,
     trafficLabel: typeof obj.trafficLabel === 'string' ? obj.trafficLabel : null,
     measuredNote: typeof obj.measuredNote === 'string' ? obj.measuredNote : null,
@@ -299,6 +303,53 @@ function totalDistanceKm(steps?: CommuteStep[] | null): number | null {
     }
   }
   return found ? Math.round(total * 10) / 10 : null;
+}
+
+const MODE_META: Record<LagosMode, { emoji: string; label: string }> = {
+  walk: { emoji: '🚶', label: 'Walk' },
+  brt: { emoji: '🚌', label: 'BRT' },
+  bus: { emoji: '🚌', label: 'Bus' },
+  danfo: { emoji: '🚐', label: 'Danfo' },
+  keke: { emoji: '🛺', label: 'Keke' },
+  ferry: { emoji: '⛴️', label: 'Ferry' },
+  rail: { emoji: '🚆', label: 'Rail' },
+  drive: { emoji: '🚗', label: 'Drive' },
+  transit: { emoji: '🚌', label: 'Transit' },
+};
+
+function inferLagosMode(step: CommuteStep): LagosMode {
+  if (step.mode && MODE_META[step.mode]) return step.mode;
+  const text = `${step.line || ''} ${step.instruction || ''}`.toLowerCase();
+  if (/\bbrt\b|lagbus|blue line bus|red line bus/.test(text)) return 'brt';
+  if (/\bkeke\b|napep|tricycle/.test(text)) return 'keke';
+  if (/\bdanfo\b|shared taxi/.test(text)) return 'danfo';
+  if (/ferry|boat/.test(text)) return 'ferry';
+  if (/train|rail|metro/.test(text)) return 'rail';
+  if (/walk|foot/.test(text)) return 'walk';
+  return 'bus';
+}
+
+/** Tighten older generic provider steps into board / alight Lagos directions. */
+function localizeTransitStep(step: CommuteStep): CommuteStep {
+  const mode = inferLagosMode(step);
+  const ride = step.instruction.match(/^Ride from (.+?) to (.+?)(?: \(toward (.+)\))?(?: · \d+ stops)?$/i);
+  if (!ride) return { ...step, mode };
+  const label = step.line || MODE_META[mode].label;
+  return {
+    ...step,
+    mode,
+    instruction: `Board ${label}${ride[3] ? ` towards ${ride[3]}` : ''} at ${ride[1]} — alight at ${ride[2]}`,
+  };
+}
+
+function commuteModes(steps: CommuteStep[] | null, fallbackToDriving: boolean): LagosMode[] {
+  if (fallbackToDriving) return ['drive'];
+  const modes: LagosMode[] = [];
+  for (const step of steps || []) {
+    const mode = inferLagosMode(step);
+    if (!modes.includes(mode)) modes.push(mode);
+  }
+  return modes.length > 0 ? modes : ['transit'];
 }
 
 // ---------------------------------------------------------------------------
@@ -523,14 +574,16 @@ function RouteSection({
   subtitle,
   steps,
   testId,
+  defaultOpen = false,
 }: {
   icon: ComponentType<{ className?: string }>;
   title: string;
   subtitle?: string | null;
   steps?: CommuteStep[] | null;
   testId: string;
+  defaultOpen?: boolean;
 }) {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(defaultOpen);
   const stepList = steps || [];
   const expandable = stepList.length > 0;
   const header = (
@@ -685,6 +738,10 @@ interface ReportViewProps {
   workDestination?: string | null;
   /** Save a work destination for this account (commute personalization). */
   onSaveWorkDestination?: (destination: string) => void | Promise<void>;
+  /** Live provider request state when no cached route is available. */
+  commuteRequestState?: 'idle' | 'loading' | 'error';
+  /** Retry an unavailable or failed commute request. */
+  onRetryCommute?: () => void;
   /** Opens the tenant submit-a-report flow, prefilled for this area. */
   onSubmitReport?: () => void;
   /**
@@ -820,6 +877,8 @@ export default function ReportView({
   coverage,
   workDestination,
   onSaveWorkDestination,
+  commuteRequestState = 'idle',
+  onRetryCommute,
   onSubmitReport,
   communitySecuritySignal,
 }: ReportViewProps) {
@@ -857,11 +916,17 @@ export default function ReportView({
   const advertisedSecurity = useMemo(() => advertisedSecurityFeatures(listing), [listing]);
   const coverageInfo = useMemo(() => coverage ?? resolveCoverage(areaKey, undefined), [coverage, areaKey]);
 
-  const drivingSteps = (commute?.routes.find((r) => r.mode === 'driving')?.steps as CommuteStep[] | null) || null;
-  const drivingKm = totalDistanceKm(drivingSteps);
+  const drivingRoute = commute?.routes.find((r) => r.mode === 'driving') || null;
+  const drivingSteps = (drivingRoute?.steps as CommuteStep[] | null) || null;
   const transitRoute = commute?.routes.find((r) => r.mode === 'transit' && typeof r.minutes === 'number') || null;
   const transitMinutes = transitRoute?.minutes ?? null;
-  const transitSteps = (transitRoute?.steps as CommuteStep[] | null) || null;
+  const transitSteps = transitRoute?.steps
+    ? (transitRoute.steps as CommuteStep[]).map(localizeTransitStep)
+    : null;
+  const transitDistanceKm = transitRoute?.distanceKm ?? totalDistanceKm(transitSteps);
+  const drivingDistanceKm = drivingRoute?.distanceKm ?? totalDistanceKm(drivingSteps);
+  const routeDistanceKm = commute?.distanceKm ?? transitDistanceKm ?? drivingDistanceKm;
+  const modeTags = commuteModes(transitSteps, transitMinutes == null);
 
   const handleSaveWorkplace = onSaveWorkDestination
     ? async (destination: string) => {
@@ -1067,68 +1132,81 @@ export default function ReportView({
       />
 
       {/* ------- 4–6 · COMMUTE, NETWORK & SECURITY (always rendered) ------- */}
-      {commute ? (
-        <DimensionCard
-          testId="card-commute"
-          icon={Car}
-          dimension="Distance to work"
-          headline={`~${commute.driveMinutes} min by car${
-            transitMinutes != null ? ` · ~${transitMinutes} min by bus` : ''
-          }`}
-          headlineClassName={`text-lg ${typography.weight.bold}`}
-          tone={commuteTone(commute.driveMinutes)}
-          detail={
-            commute.measuredNote ||
-            `Measured in ${commute.trafficLabel || 'typical Lagos traffic'}${
-              commute.destination ? ` to ${commute.destination}` : ''
-            }.`
-          }
-        >
-          <div className="mt-3 space-y-2">
-            <RouteSection
-              icon={Car}
-              title={`By car — ${commute.driveMinutes} min`}
-              subtitle={[
-                commute.trafficLabel || 'typical Lagos traffic',
-                drivingKm != null ? `~${drivingKm} km total` : null,
-              ]
-                .filter(Boolean)
-                .join(' · ')}
-              steps={drivingSteps}
-              testId="route-driving"
-            />
-            {transitMinutes != null ? (
-              <RouteSection
-                icon={Bus}
-                title={`By bus — ${transitMinutes} min`}
-                subtitle="public transit — BRT, bus or rail where available"
-                steps={transitSteps}
-                testId="route-transit"
-              />
-            ) : (
-              <div
-                className="flex items-center gap-2 px-3 py-2.5 rounded-xl border border-[var(--space-border-default)] bg-[var(--space-surface-muted)]"
-                data-testid="route-transit-unavailable"
-              >
-                <Bus className={`w-4 h-4 shrink-0 ${tw.icon.muted}`} />
-                <span className={`text-xs ${typography.color.muted}`}>
-                  Public transit route not available for this area
-                </span>
-              </div>
-            )}
-          </div>
-          {handleSaveWorkplace && <WorkplaceEditor workplace={workplace} onSave={handleSaveWorkplace} />}
-        </DimensionCard>
-      ) : workplace ? (
+      {!workplace ? (
         <DimensionCard
           testId="card-commute"
           icon={Briefcase}
           dimension="Distance to work"
-          headline={`Commute to ${workplace} not measured yet`}
+          headline="Add your workplace →"
           tone="improving"
-          statusLabel="Data unavailable"
-          detail="Commute data unavailable for this route so far. We only show real routes measured in Lagos traffic (Google Routes) — never straight-line guesses. Your saved workplace applies to every report, and this card fills in automatically once the route is measured."
+          statusLabel="Add workplace"
+          detail="Save your work address once to see the BRT, bus, Danfo, Keke, ferry or rail route Lagos routing data can find from this property."
         >
+          {handleSaveWorkplace && <WorkplaceEditor workplace={null} onSave={handleSaveWorkplace} />}
+        </DimensionCard>
+      ) : commute ? (
+        <DimensionCard
+          testId="card-commute"
+          icon={transitMinutes != null ? Bus : Car}
+          dimension="Commute to work"
+          headline={
+            transitMinutes != null
+              ? `~${transitMinutes} min by public transport · ${commute.driveMinutes} min drive`
+              : `${commute.driveMinutes} min drive${routeDistanceKm != null ? ` · ${routeDistanceKm} km` : ''}`
+          }
+          headlineClassName={`text-lg ${typography.weight.bold}`}
+          tone={commuteTone(commute.driveMinutes)}
+          detail={
+            transitMinutes == null
+              ? 'No public transit route found — driving directions shown instead.'
+              : commute.measuredNote ||
+                `Route to ${commute.destination || workplace}, departing at 7:30am on a typical Lagos weekday.`
+          }
+        >
+          <div className="mt-3 space-y-2.5">
+            <div className="flex items-center justify-between gap-3 flex-wrap">
+              <div>
+                <p className={`text-[10px] uppercase tracking-wide ${typography.color.muted}`}>Total distance</p>
+                <p className={`text-lg ${typography.weight.bold} ${typography.color.primary}`} data-testid="commute-distance">
+                  {routeDistanceKm != null ? `${routeDistanceKm} km` : 'Distance unavailable'}
+                </p>
+              </div>
+              <div className="flex gap-1.5 flex-wrap" data-testid="commute-mode-tags">
+                {modeTags.map((mode) => (
+                  <span
+                    key={mode}
+                    className={`px-2.5 py-1 rounded-full text-[10px] ${typography.weight.semibold} ${tw.bg.accent} ${typography.color.brand}`}
+                  >
+                    {MODE_META[mode].emoji} {MODE_META[mode].label}
+                  </span>
+                ))}
+              </div>
+            </div>
+
+            {transitMinutes != null ? (
+              <RouteSection
+                icon={Bus}
+                title={`Public transport — ${transitMinutes} min`}
+                subtitle={`${commute.trafficLabel || 'typical weekday 7:30am Lagos conditions'}${
+                  routeDistanceKm != null ? ` · ${routeDistanceKm} km` : ''
+                }`}
+                steps={transitSteps}
+                testId="route-transit"
+                defaultOpen
+              />
+            ) : null}
+
+            <RouteSection
+              icon={Car}
+              title={`${transitMinutes != null ? 'Driving comparison' : 'Driving directions'} — ${commute.driveMinutes} min`}
+              subtitle={`${commute.trafficLabel || 'typical weekday 7:30am Lagos conditions'}${
+                drivingDistanceKm != null ? ` · ${drivingDistanceKm} km` : ''
+              }`}
+              steps={drivingSteps}
+              testId="route-driving"
+              defaultOpen={transitMinutes == null}
+            />
+          </div>
           {handleSaveWorkplace && <WorkplaceEditor workplace={workplace} onSave={handleSaveWorkplace} />}
         </DimensionCard>
       ) : (
@@ -1136,12 +1214,35 @@ export default function ReportView({
           testId="card-commute"
           icon={Briefcase}
           dimension="Distance to work"
-          headline="Add your workplace to see your commute"
+          headline={
+            commuteRequestState === 'loading'
+              ? `Finding your Lagos route to ${workplace}…`
+              : 'Commute info temporarily unavailable'
+          }
           tone="improving"
-          statusLabel="Add workplace"
-          detail="Tell us where you work — an address or area like “Victoria Island” or “Ikeja”. It saves to your account once, and every report you open then shows your real commute by car and by bus."
+          statusLabel={commuteRequestState === 'loading' ? 'Checking route' : 'Try again'}
+          detail={
+            commuteRequestState === 'loading'
+              ? 'Checking public transport first, then driving and walking as coverage fallback.'
+              : 'We could not load a route right now. Your workplace is still saved and no report access was affected.'
+          }
         >
-          {handleSaveWorkplace && <WorkplaceEditor workplace={null} onSave={handleSaveWorkplace} />}
+          <div className="mt-3 flex items-center gap-2 flex-wrap">
+            {commuteRequestState === 'loading' ? (
+              <span className={`inline-flex items-center gap-1.5 text-xs ${typography.color.muted}`}>
+                <Loader2 className="w-3.5 h-3.5 animate-spin" /> Checking BRT, bus, ferry and road options…
+              </span>
+            ) : onRetryCommute ? (
+              <button
+                onClick={onRetryCommute}
+                className={`inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs ${tw.button.secondary}`}
+                data-testid="button-retry-commute"
+              >
+                <RefreshCw className="w-3.5 h-3.5" /> Retry commute
+              </button>
+            ) : null}
+          </div>
+          {handleSaveWorkplace && <WorkplaceEditor workplace={workplace} onSave={handleSaveWorkplace} />}
         </DimensionCard>
       )}
 

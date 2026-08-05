@@ -301,12 +301,28 @@ export async function recordUnlock(params: {
  */
 export async function saveWorkDestination(email: string, destination: string): Promise<void> {
   try {
+    const value = destination.trim().replace(/\s+/g, ' ');
+    if (value.length < 3 || value.length > 160) {
+      throw new Error('invalid workplace length');
+    }
     const db = await getWorkspaceDb();
     const row = await ensureRenterAccount(email);
     await db.from('renter_accounts').update(row.id, {
-      work_destination: destination.trim(),
+      work_destination: value,
       last_seen_at: new Date().toISOString(),
     });
+    // Verify the upsert rather than assuming an SDK response means the shared
+    // renter profile was actually updated. This is the source every report
+    // reads after refresh and across devices.
+    let saved: RenterAccountRow | null = null;
+    for (const delayMs of [0, 100, 300]) {
+      if (delayMs) await new Promise((resolve) => setTimeout(resolve, delayMs));
+      saved = await findRenterAccount(db, email);
+      if (saved?.work_destination === value) break;
+    }
+    if (!saved || saved.work_destination !== value) {
+      throw new Error('workplace update was not persisted');
+    }
   } catch {
     throw new Error('We could not save your workplace. Please try again.');
   }

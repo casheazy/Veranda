@@ -29,6 +29,7 @@ import {
 import { ListingPhotoCarousel, cleanScrapedText, locationLabel, rentValue } from './listingDisplay';
 import {
   AreaCommuteRow,
+  CommutePayload,
   CommuteRouteRow,
   requestListingMeasurement,
   resolveCommute,
@@ -108,26 +109,53 @@ export default function ListingDetail({
     [listing, workDestination, listingRoutesHook.data, areaRoutesHook.data]
   );
 
-  // When the renter saved a work destination but no measurement backs the
-  // card yet, ask the pipeline (once per session) to measure the exact route,
-  // then refresh so a fast measurement appears without a reload. The hook
-  // dedupes and rate-caps, and simply leaves the row pending while the
-  // routing key is missing — the card stays gray, never fabricated.
-  const measureRequestedRef = useRef(false);
+  // Request the exact route immediately when no measured cache exists. The
+  // request state is passed into the card so provider/config failures become
+  // a clear retry state instead of a permanently gray, broken card.
+  const [liveCommute, setLiveCommute] = useState<CommutePayload | null>(null);
+  const [commuteRequestState, setCommuteRequestState] = useState<'idle' | 'loading' | 'error'>('idle');
+  const requestKeyRef = useRef('');
+
+  const loadCommute = async (force = false) => {
+    if (!workDestination) return;
+    const key = `${listing.id}::${workDestination.trim().toLowerCase()}`;
+    if (!force && requestKeyRef.current === key) return;
+    requestKeyRef.current = key;
+    setCommuteRequestState('loading');
+    const result = await requestListingMeasurement(listing.id, workDestination, force);
+    if (result.commute) {
+      setLiveCommute(result.commute);
+      setCommuteRequestState('idle');
+    } else if (result.ok && result.result === 'cached') {
+      listingRoutesHook.refresh();
+      setCommuteRequestState('idle');
+    } else {
+      setCommuteRequestState('error');
+    }
+    listingRoutesHook.refresh();
+  };
+
   useEffect(() => {
-    if (!unlocked || measureRequestedRef.current) return;
-    if (!workDestination || listingRoutesHook.loading || areaRoutesHook.loading) return;
-    if (commuteResolution.payload || !commuteResolution.shouldRequestExact) return;
-    measureRequestedRef.current = true;
-    let cancelled = false;
-    void requestListingMeasurement(listing.id, workDestination).then(() => {
-      if (!cancelled) listingRoutesHook.refresh();
-    });
-    return () => {
-      cancelled = true;
-    };
+    setLiveCommute(null);
+    setCommuteRequestState('idle');
+    requestKeyRef.current = '';
+  }, [listing.id, workDestination]);
+
+  useEffect(() => {
+    if (!unlocked || !workDestination || listingRoutesHook.loading || areaRoutesHook.loading) return;
+    const destinationKey = workDestination.trim().replace(/\s+/g, ' ').toLowerCase();
+    const hasFreshExact = (listingRoutesHook.data || []).some(
+      (row) =>
+        row.status === 'measured' &&
+        row.drive_minutes != null &&
+        (row.destination || '').trim().replace(/\s+/g, ' ').toLowerCase() === destinationKey
+    );
+    if (hasFreshExact) return;
+    // Request the exact property route even when an area→hub baseline is
+    // already visible; the baseline is a fallback, never the final answer.
+    void loadCommute();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [unlocked, workDestination, commuteResolution, listingRoutesHook.loading, areaRoutesHook.loading]);
+  }, [unlocked, listing.id, workDestination, listingRoutesHook.loading, areaRoutesHook.loading]);
 
   // ---------------- network coverage data ----------------
   // Per-carrier (MTN / Airtel / Glo / 9mobile) lookups the scheduled pipeline
@@ -161,10 +189,10 @@ export default function ListingDetail({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [unlocked, areaKey, coverage.shouldRequestCheck, coverageHook.loading]);
 
-  const reportListing = useMemo<Listing>(
-    () => (commuteResolution.payload ? { ...listing, commute: commuteResolution.payload } : listing),
-    [listing, commuteResolution.payload]
-  );
+  const reportListing = useMemo<Listing>(() => {
+    const payload = liveCommute || commuteResolution.payload;
+    return payload ? { ...listing, commute: payload } : listing;
+  }, [listing, liveCommute, commuteResolution.payload]);
   const rent = rentValue(listing);
   const title = cleanScrapedText(listing.title) || 'Lagos home';
   const description = cleanScrapedText(listing.description);
@@ -309,6 +337,8 @@ export default function ListingDetail({
                 coverage={coverage}
                 workDestination={workDestination}
                 onSaveWorkDestination={onSaveWorkDestination}
+                commuteRequestState={commuteRequestState}
+                onRetryCommute={workDestination ? () => void loadCommute(true) : undefined}
                 onSubmitReport={onSubmitReport ? () => onSubmitReport(areaKey) : undefined}
               />
               <ReportChat
