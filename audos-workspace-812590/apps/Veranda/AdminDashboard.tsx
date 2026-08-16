@@ -18,12 +18,15 @@ import {
   Check,
   ClipboardList,
   CreditCard,
+  Download,
   Droplets,
   ExternalLink,
+  FileText,
   KeyRound,
   Loader2,
   Lock,
   Pencil,
+  Printer,
   ShieldCheck,
   Ticket,
   Trash2,
@@ -42,6 +45,7 @@ import {
   mrrChargeHint,
 } from './types';
 import { WORKSPACE_ID } from './account';
+import { TRACTION_ONEPAGER_FILENAME, TRACTION_ONEPAGER_HTML } from './tractionOnepagerContent';
 
 /** Shared with the founder — rotate whenever someone leaves the team. */
 const ADMIN_PASSWORD = 'veranda-team-2026';
@@ -168,6 +172,45 @@ function TenantReportsPanel() {
     verifiedFilter === 'all' ? true : verifiedFilter === 'verified' ? !!r.verified : !r.verified
   );
 
+  const readSharedReport = async (id: number): Promise<TenantReport | null> => {
+    const { data } = await window.__workspaceDb
+      .from('tenant_reports', { shared: true })
+      .eq('id', id)
+      .limit(1)
+      .get();
+    return (data && data[0]) || null;
+  };
+
+  const verifiedModerationWrite = async (
+    id: number,
+    action: string,
+    write: () => Promise<unknown>,
+    persisted: (row: TenantReport | null) => boolean
+  ): Promise<void> => {
+    let writeError: unknown = null;
+    try {
+      await write();
+    } catch (err) {
+      writeError = err;
+    }
+
+    // WorkspaceDB can silently match zero rows on cross-session updates/deletes.
+    // A moderation action only counts as successful once a shared read confirms it.
+    for (const delayMs of [0, 150, 400]) {
+      if (delayMs) await new Promise((resolve) => setTimeout(resolve, delayMs));
+      try {
+        if (persisted(await readSharedReport(id))) return;
+      } catch {
+        /* keep trying; the final error below is the actionable one */
+      }
+    }
+
+    const detail = writeError instanceof Error && writeError.message ? ` (${writeError.message})` : '';
+    throw new Error(
+      `Could not ${action}: this report belongs to another browser session and the cross-session write was rejected${detail}. No change was saved.`
+    );
+  };
+
   const cancelEdit = () => {
     setEditingId(null);
     setDraft(null);
@@ -203,8 +246,17 @@ function TenantReportsPanel() {
     }
   };
 
-  const toggleVerified = (r: TenantReport) =>
-    runAction(r.id, () => window.__workspaceDb.from('tenant_reports').update(r.id, { verified: !r.verified }));
+  const toggleVerified = (r: TenantReport) => {
+    const nextVerified = !r.verified;
+    return runAction(r.id, () =>
+      verifiedModerationWrite(
+        r.id,
+        'change the verification status',
+        () => window.__workspaceDb.from('tenant_reports', { shared: true }).update(r.id, { verified: nextVerified }),
+        (saved) => saved?.verified === nextVerified
+      )
+    );
+  };
 
   const saveEdit = (r: TenantReport) => {
     if (!draft) return;
@@ -224,7 +276,19 @@ function TenantReportsPanel() {
       payload.period = draft.period.trim() || null;
     }
     return runAction(r.id, async () => {
-      await window.__workspaceDb.from('tenant_reports').update(r.id, payload);
+      await verifiedModerationWrite(
+        r.id,
+        'save these edits',
+        () => window.__workspaceDb.from('tenant_reports', { shared: true }).update(r.id, payload),
+        (saved) =>
+          !!saved &&
+          Object.entries(payload).every(([key, value]) => {
+            const savedValue = (saved as any)[key];
+            if (value == null) return savedValue == null;
+            if (typeof value === 'number') return Number(savedValue) === value;
+            return savedValue === value;
+          })
+      );
       cancelEdit();
     });
   };
@@ -233,7 +297,14 @@ function TenantReportsPanel() {
     const where = r.street || areaName(r.area_key);
     if (!window.confirm(`Delete this ${r.report_type} report for ${where}? This cannot be undone.`)) return;
     if (editingId === r.id) cancelEdit();
-    runAction(r.id, () => window.__workspaceDb.from('tenant_reports').delete(r.id));
+    runAction(r.id, () =>
+      verifiedModerationWrite(
+        r.id,
+        'delete this report',
+        () => window.__workspaceDb.from('tenant_reports', { shared: true }).delete(r.id),
+        (saved) => saved == null
+      )
+    );
   };
 
   return (
@@ -548,6 +619,76 @@ function TenantReportsPanel() {
   );
 }
 
+// ---------------------------------------------------------------------------
+// Traction one-pager — founder-only access to the printable accelerator
+// one-pager. "Open & print" renders it in a new tab (use its Print / Save as
+// PDF button there); "Download HTML" saves the standalone file directly.
+// ---------------------------------------------------------------------------
+
+function TractionOnePagerCard() {
+  const [openFailed, setOpenFailed] = useState(false);
+
+  const openOnePager = () => {
+    const w = window.open('', '_blank');
+    if (!w) {
+      // Pop-up blocked (some embedded previews) — the download button still works.
+      setOpenFailed(true);
+      return;
+    }
+    setOpenFailed(false);
+    w.document.open();
+    w.document.write(TRACTION_ONEPAGER_HTML);
+    w.document.close();
+  };
+
+  const downloadOnePager = () => {
+    const blob = new Blob([TRACTION_ONEPAGER_HTML], { type: 'text/html' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = TRACTION_ONEPAGER_FILENAME;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  };
+
+  return (
+    <div className={`${tw.card.default} rounded-2xl p-4 mt-3`} data-testid="admin-traction-onepager">
+      <div className="flex items-center gap-2 mb-1">
+        <FileText className={`w-4 h-4 ${tw.icon.primary}`} />
+        <p className={`text-sm ${typography.weight.semibold} ${typography.color.primary}`}>Traction one-pager</p>
+      </div>
+      <p className={`text-[11px] mb-3 ${typography.color.muted}`}>
+        Printable one-pager for accelerator and investor applications — problem, product, live traction stats and
+        what's next. Open it in a new tab, then use its “Print / Save as PDF” button to get a single-page PDF.
+      </p>
+      <div className="flex items-center gap-1.5 flex-wrap">
+        <button
+          onClick={openOnePager}
+          className={`px-3 py-1.5 rounded-lg text-[11px] flex items-center gap-1 ${tw.button.primary}`}
+          data-testid="button-onepager-open"
+        >
+          <Printer className="w-3 h-3" /> Open &amp; print
+        </button>
+        <button
+          onClick={downloadOnePager}
+          className={`px-3 py-1.5 rounded-lg text-[11px] flex items-center gap-1 ${tw.button.secondary}`}
+          data-testid="button-onepager-download"
+        >
+          <Download className="w-3 h-3" /> Download HTML
+        </button>
+      </div>
+      {openFailed && (
+        <p className={`text-[10px] mt-2 ${typography.color.muted}`}>
+          The new tab was blocked by the browser here — use “Download HTML” instead, then open the downloaded file and
+          hit its “Print / Save as PDF” button.
+        </p>
+      )}
+    </div>
+  );
+}
+
 export default function AdminDashboard({
   isEntrepreneur,
   onBack,
@@ -726,6 +867,9 @@ export default function AdminDashboard({
           hint={mrrChargeHint(subCount)}
         />
       </div>
+
+      {/* Investor materials */}
+      <TractionOnePagerCard />
 
       {/* Unlock breakdown */}
       <div className={`${tw.card.default} rounded-2xl p-4 mt-3`} data-testid="admin-unlock-breakdown">

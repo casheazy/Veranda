@@ -1,0 +1,340 @@
+/**
+ * Veranda traction one-pager — full standalone HTML, exported as a string so
+ * the founder can open/print/download it from the Admin dashboard.
+ *
+ * Keep in sync with apps/Veranda/traction-onepager.html (same document; that
+ * file is the canonical copy, this module is the in-app delivery mechanism).
+ */
+export const TRACTION_ONEPAGER_FILENAME = 'veranda-traction-onepager.html';
+
+export const TRACTION_ONEPAGER_HTML = `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Veranda — Traction One-Pager</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --terracotta: #C25733;
+    --terracotta-dark: #A3441F;
+    --cream: #FAF7F2;
+    --ink: #1A1A1A;
+    --muted: #5C564F;
+    --card: #FFFFFF;
+    --line: #E8E0D5;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  html { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+
+  body {
+    font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+    background: var(--cream);
+    color: var(--ink);
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .page {
+    max-width: 820px;
+    margin: 0 auto;
+    padding: 48px 40px 32px;
+  }
+
+  /* ---------- Header ---------- */
+  header {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 16px;
+    padding-bottom: 20px;
+    border-bottom: 3px solid var(--terracotta);
+    margin-bottom: 28px;
+  }
+
+  .wordmark {
+    font-size: 40px;
+    font-weight: 900;
+    letter-spacing: -0.03em;
+    color: var(--terracotta);
+    line-height: 1;
+  }
+
+  .tagline {
+    margin-top: 8px;
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--ink);
+    letter-spacing: 0.01em;
+  }
+
+  .header-meta {
+    text-align: right;
+    font-size: 12px;
+    color: var(--muted);
+    font-weight: 500;
+    line-height: 1.6;
+    white-space: nowrap;
+  }
+
+  .header-meta strong { color: var(--ink); }
+
+  /* ---------- Sections ---------- */
+  section { margin-bottom: 24px; }
+
+  .section-label {
+    font-size: 11px;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+    color: var(--terracotta);
+    margin-bottom: 8px;
+  }
+
+  .section-body {
+    font-size: 15px;
+    color: var(--ink);
+    max-width: 62ch;
+  }
+
+  .section-body a { color: var(--terracotta); font-weight: 600; text-decoration: none; }
+
+  .two-col {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 28px;
+  }
+
+  /* ---------- Stat grid ---------- */
+  .stat-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 14px;
+    margin-top: 4px;
+  }
+
+  .stat-card {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 18px 16px 16px;
+    box-shadow: 0 1px 3px rgba(26, 26, 26, 0.05);
+  }
+
+  .stat-number {
+    font-size: 30px;
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    color: var(--ink);
+    line-height: 1.1;
+  }
+
+  .stat-number .accent { color: var(--terracotta); }
+
+  .stat-label {
+    margin-top: 6px;
+    font-size: 12.5px;
+    font-weight: 500;
+    color: var(--muted);
+    line-height: 1.35;
+  }
+
+  /* ---------- Callout ---------- */
+  .callout {
+    border: 2px solid var(--terracotta);
+    border-radius: 12px;
+    background: #FFF9F5;
+    padding: 20px 24px;
+    margin: 26px 0;
+    display: flex;
+    gap: 14px;
+    align-items: flex-start;
+  }
+
+  .callout-bar {
+    flex: none;
+    width: 4px;
+    align-self: stretch;
+    border-radius: 2px;
+    background: var(--terracotta);
+  }
+
+  .callout p {
+    font-size: 16.5px;
+    font-weight: 600;
+    line-height: 1.5;
+    color: var(--ink);
+  }
+
+  .callout p .accent { color: var(--terracotta-dark); }
+
+  /* ---------- Footer ---------- */
+  footer {
+    margin-top: 30px;
+    padding-top: 16px;
+    border-top: 1px solid var(--line);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--muted);
+  }
+
+  footer .contact a {
+    color: var(--terracotta);
+    font-weight: 600;
+    text-decoration: none;
+  }
+
+  footer .contact span { margin: 0 8px; color: var(--line); }
+
+  /* ---------- Print button ---------- */
+  .print-btn {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    background: var(--terracotta);
+    color: #fff;
+    border: none;
+    border-radius: 999px;
+    padding: 12px 22px;
+    font-family: inherit;
+    font-size: 14px;
+    font-weight: 700;
+    cursor: pointer;
+    box-shadow: 0 4px 14px rgba(194, 87, 51, 0.35);
+    transition: background 0.15s ease, transform 0.15s ease;
+  }
+
+  .print-btn:hover { background: var(--terracotta-dark); transform: translateY(-1px); }
+
+  /* ---------- Small screens ---------- */
+  @media (max-width: 640px) {
+    .page { padding: 32px 20px; }
+    header { flex-direction: column; align-items: flex-start; }
+    .header-meta { text-align: left; }
+    .two-col { grid-template-columns: 1fr; gap: 20px; }
+    .stat-grid { grid-template-columns: repeat(2, 1fr); }
+    footer { flex-direction: column; gap: 6px; align-items: flex-start; }
+  }
+
+  /* ---------- Print ---------- */
+  @page {
+    margin: 1.5cm;
+    size: A4 portrait;
+  }
+
+  @media print {
+    body { background: #fff; }
+    .page {
+      max-width: none;
+      padding: 0;
+    }
+    .print-btn { display: none; }
+    header { margin-bottom: 20px; padding-bottom: 14px; }
+    section { margin-bottom: 16px; }
+    .wordmark { font-size: 34px; }
+    .section-body { font-size: 13.5px; }
+    .stat-grid { gap: 10px; }
+    .stat-card {
+      padding: 12px 12px 11px;
+      box-shadow: none;
+      break-inside: avoid;
+    }
+    .stat-number { font-size: 24px; }
+    .stat-label { font-size: 11px; }
+    .callout { margin: 18px 0; padding: 14px 18px; break-inside: avoid; }
+    .callout p { font-size: 14px; }
+    footer { margin-top: 20px; }
+    a { text-decoration: none !important; }
+  }
+</style>
+</head>
+<body>
+
+<button class="print-btn" type="button" onclick="window.print()" aria-label="Print or save this page as a PDF">Print / Save as PDF</button>
+
+<div class="page">
+
+  <header>
+    <div>
+      <div class="wordmark">Veranda</div>
+      <div class="tagline">Verify before you sign.</div>
+    </div>
+    <div class="header-meta">
+      <strong>Traction One-Pager</strong><br />
+      AI-powered property verification for Nigerian renters
+    </div>
+  </header>
+
+  <div class="two-col">
+    <section>
+      <div class="section-label">The Problem</div>
+      <p class="section-body">Nigerian renters pay multiple agent fees, tour properties that don't match listings, and only discover flood risk, poor power supply, and security issues after signing.</p>
+    </section>
+
+    <section>
+      <div class="section-label">The Product</div>
+      <p class="section-body">A verified property report covering flood zone, power (DisCo band), security, and commute — available before you commit. Live at <a href="https://yourveranda.com">yourveranda.com</a>.</p>
+    </section>
+  </div>
+
+  <section>
+    <div class="section-label">Early Traction</div>
+    <div class="stat-grid">
+      <div class="stat-card">
+        <div class="stat-number">48</div>
+        <div class="stat-label">unique visitors</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-number">22</div>
+        <div class="stat-label">emails captured</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-number"><span class="accent">45.8%</span></div>
+        <div class="stat-label">visitor-to-email conversion rate</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-number"><span class="accent">~9&times;</span></div>
+        <div class="stat-label">industry benchmark (industry avg: 2–5%)</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-number">₦0</div>
+        <div class="stat-label">ad spend — all organic, single WhatsApp post</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-number">0</div>
+        <div class="stat-label">paid ads — 100% word-of-mouth</div>
+      </div>
+    </div>
+  </section>
+
+  <div class="callout">
+    <div class="callout-bar"></div>
+    <p>48 self-selected visitors from one WhatsApp post. <span class="accent">46% email capture rate with zero ad spend — 9&times; the industry average.</span></p>
+  </div>
+
+  <section>
+    <div class="section-label">What's Next</div>
+    <p class="section-body">First activation experiment in progress: testing an estate agent widget as a B2B acquisition layer to close the report-run gap.</p>
+  </section>
+
+  <footer>
+    <div class="contact">
+      <a href="https://yourveranda.com">yourveranda.com</a>
+      <span>|</span>
+      <a href="mailto:kevwe@yourveranda.com">kevwe@yourveranda.com</a>
+    </div>
+    <div>Veranda &middot; 2026</div>
+  </footer>
+
+</div>
+
+</body>
+</html>
+`;
