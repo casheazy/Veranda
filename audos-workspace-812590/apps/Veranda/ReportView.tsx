@@ -3,9 +3,10 @@
  *
  * Design contract:
  * - Location map first, then five stacked dimension cards (flood, power,
- *   distance-to-work, network, security), then sources + a muted disclaimer.
- *   This is an invariant: no report variant may omit a dimension, even when
- *   its lookup is unavailable.
+ *   distance-to-work, network, security), a "Before You Sign" utility-debt
+ *   check, then sources + a muted disclaimer. This is an invariant: no report
+ *   variant may omit a dimension or the utility check, even when its lookup is
+ *   unavailable.
  * - Every card carries a plain-language one-line headline and a color-coded
  *   pill: Good (green) / Fair (amber) / Watch out (red) / Improving (gray).
  *   "Improving" is used whenever confidence in the data is low — missing data
@@ -51,6 +52,7 @@ import {
   MapPin,
   PlusCircle,
   RefreshCw,
+  AlertTriangle,
 } from 'lucide-react';
 import { tw, typography } from '../../lib/colors';
 import {
@@ -141,6 +143,124 @@ function firstSentence(text?: string | null): string | null {
   if (!text) return null;
   const match = text.match(/^[^.!?]+[.!?]/);
   return match ? match[0].trim() : text.trim();
+}
+
+type DiscoId = 'eko' | 'ikeja';
+
+const DISCO_DETAILS: Record<
+  DiscoId,
+  { name: string; abbreviation: string; ussd: string; website: string; websiteUrl: string }
+> = {
+  eko: {
+    name: 'Eko Electric',
+    abbreviation: 'EKEDC',
+    ussd: '*232#',
+    website: 'ekedp.com',
+    websiteUrl: 'https://ekedp.com',
+  },
+  ikeja: {
+    name: 'Ikeja Electric',
+    abbreviation: 'IKEDC',
+    ussd: '*904#',
+    website: 'ikejaelectric.com',
+    websiteUrl: 'https://ikejaelectric.com',
+  },
+};
+
+/**
+ * Address-first Lagos DISCO lookup. Area-key fallback keeps listing reports
+ * deterministic when a listing has a short or landmark-only address. Generic
+ * "Ikorodu" deliberately remains unmatched because both DISCOs cover parts of
+ * it; without a more specific service area, telling the renter to confirm is
+ * safer than guessing the meter's provider.
+ */
+const ADDRESS_DISCO_AREAS: Record<DiscoId, string[]> = {
+  eko: [
+    'lagos island',
+    'isale eko',
+    'victoria island',
+    'oniru',
+    'ikoyi',
+    'lekki',
+    'chevron',
+    'ajah',
+    'sangotedo',
+    'ibeju',
+    'epe',
+    'surulere',
+    'mushin',
+    'apapa',
+    'ajegunle',
+    'badagry',
+    'festac',
+    'amuwo odofin',
+    'satellite town',
+    'ojo',
+    'orile',
+  ],
+  ikeja: [
+    'ikeja',
+    'agege',
+    'alimosho',
+    'ojodu',
+    'ogba',
+    'berger',
+    'magodo',
+    'ketu',
+    'ojota',
+    'yaba',
+    'shomolu',
+    'somolu',
+    'bariga',
+    'ebute metta',
+    'maryland',
+    'gbagada',
+    'oshodi',
+    'isolo',
+    'ilupeju',
+    'egbeda',
+    'akowonjo',
+    'idimu',
+    'ipaja',
+    'ayobo',
+    'igando',
+    'ikotun',
+  ],
+};
+
+const AREA_KEY_DISCO: Partial<Record<AreaKey, DiscoId>> = {
+  'victoria-island': 'eko',
+  ikoyi: 'eko',
+  lekki: 'eko',
+  chevron: 'eko',
+  ajah: 'eko',
+  sangotedo: 'eko',
+  epe: 'eko',
+  surulere: 'eko',
+  mushin: 'eko',
+  festac: 'eko',
+  yaba: 'ikeja',
+  gbagada: 'ikeja',
+  shomolu: 'ikeja',
+  maryland: 'ikeja',
+  oshodi: 'ikeja',
+  isolo: 'ikeja',
+  ikeja: 'ikeja',
+  magodo: 'ikeja',
+  ojodu: 'ikeja',
+  ketu: 'ikeja',
+  agege: 'ikeja',
+  alimosho: 'ikeja',
+};
+
+function identifyDisco(address: string, areaKey: AreaKey): DiscoId | null {
+  const normalized = ` ${address.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()} `;
+  for (const discoId of ['eko', 'ikeja'] as DiscoId[]) {
+    if (ADDRESS_DISCO_AREAS[discoId].some((area) => normalized.includes(` ${area} `))) {
+      return discoId;
+    }
+  }
+  return AREA_KEY_DISCO[areaKey] || null;
 }
 
 // ---------------------------------------------------------------------------
@@ -778,6 +898,109 @@ function SubmitReportPrompt({ label, onClick }: { label: string; onClick?: () =>
       <PlusCircle className="w-3.5 h-3.5" />
       {label}
     </button>
+  );
+}
+
+function UtilityBillDebtCheck({ address, areaKey }: { address: string; areaKey: AreaKey }) {
+  const discoId = identifyDisco(address, areaKey);
+  const disco = discoId ? DISCO_DETAILS[discoId] : null;
+  const options = disco ? [disco] : [DISCO_DETAILS.eko, DISCO_DETAILS.ikeja];
+
+  return (
+    <section className="pt-1" aria-labelledby="before-you-sign-heading" data-testid="before-you-sign">
+      <h3
+        id="before-you-sign-heading"
+        className={`text-xs uppercase tracking-wide mb-2 ${typography.weight.semibold} ${typography.color.primary}`}
+      >
+        Before You Sign
+      </h3>
+      <div
+        className="rounded-2xl p-4 border border-[var(--space-semantic-warning)] bg-[var(--space-surface-card)]"
+        data-testid="card-utility-debt-check"
+      >
+        <div className="flex items-start gap-3">
+          <span className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0 bg-[var(--space-semantic-warning-100)]">
+            <AlertTriangle className="w-[18px] h-[18px] text-[var(--space-semantic-warning-700)]" />
+          </span>
+          <div className="min-w-0 flex-1">
+            <p className={`text-[10px] uppercase tracking-wide ${typography.color.muted}`}>Checklist item</p>
+            <h4 className={`text-[15px] leading-snug mt-0.5 ${typography.weight.semibold} ${typography.color.primary}`}>
+              ⚡ Utility Bill Debt Check
+            </h4>
+
+            {disco ? (
+              <div
+                className={`mt-3 p-3 rounded-xl ${tw.bg.muted} border border-[var(--space-border-default)]`}
+                data-testid={`utility-disco-${discoId}`}
+              >
+                <p className={`text-[10px] uppercase tracking-wide ${typography.color.muted}`}>
+                  DISCO identified for this area
+                </p>
+                <p className={`text-sm mt-0.5 ${typography.weight.semibold} ${typography.color.primary}`}>
+                  {disco.name} ({disco.abbreviation})
+                </p>
+              </div>
+            ) : (
+              <div
+                className={`mt-3 p-3 rounded-xl ${tw.bg.muted} border border-[var(--space-border-default)]`}
+                data-testid="utility-disco-unmatched"
+              >
+                <p className={`text-sm ${typography.weight.semibold} ${typography.color.primary}`}>
+                  Confirm which DISCO serves this property
+                </p>
+                <p className={`text-xs mt-1 leading-relaxed ${typography.color.muted}`}>
+                  This neighborhood could not be matched confidently. Ask the landlord or agent whether Eko Electric or Ikeja Electric serves the property, then use the matching option below.
+                </p>
+              </div>
+            )}
+
+            <p className={`text-xs mt-3 leading-relaxed ${typography.weight.medium} ${typography.color.primary}`}>
+              Ask the landlord or agent for the electricity meter number for this property.
+            </p>
+
+            <div className="mt-2 space-y-2">
+              {options.map((option) => (
+                <div
+                  key={option.abbreviation}
+                  className="flex items-center justify-between gap-3 p-3 rounded-xl border border-[var(--space-border-default)] bg-[var(--space-surface-page)]"
+                >
+                  <div className="min-w-0">
+                    <p className={`text-xs ${typography.weight.semibold} ${typography.color.primary}`}>
+                      {option.name} ({option.abbreviation})
+                    </p>
+                    <p className={`text-[11px] mt-0.5 ${typography.color.muted}`}>Check outstanding debt</p>
+                  </div>
+                  <div className="shrink-0 text-right">
+                    <p className={`font-mono text-sm ${typography.weight.bold} ${typography.color.primary}`}>
+                      {option.ussd}
+                    </p>
+                    <a
+                      href={option.websiteUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className={`inline-flex items-center gap-1 text-[10px] underline ${typography.color.secondary}`}
+                    >
+                      {option.website} <ExternalLink className="w-2.5 h-2.5" />
+                    </a>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="flex items-start gap-2 mt-3 p-3 rounded-xl bg-[var(--space-semantic-warning-100)]">
+              <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0 text-[var(--space-semantic-warning-700)]" />
+              <p className={`text-xs leading-relaxed ${typography.color.primary}`}>
+                Do not pay any fees or sign any agreement until you have confirmed there is no outstanding debt on this meter. You may also visit the nearest DISCO office with the meter number.
+              </p>
+            </div>
+
+            <p className={`text-xs mt-3 leading-relaxed ${typography.weight.semibold} ${typography.color.primary}`}>
+              Outstanding electricity debt transfers to new tenants — you could be paying for bills you didn't run.
+            </p>
+          </div>
+        </div>
+      </div>
+    </section>
   );
 }
 
@@ -1632,6 +1855,9 @@ export default function ReportView({
         )}
       </DimensionCard>
       )}
+
+      {/* ------------------------- BEFORE YOU SIGN ------------------------- */}
+      <UtilityBillDebtCheck address={address} areaKey={areaKey} />
 
       {/* Sources */}
       {sources.length > 0 && (
