@@ -12,7 +12,7 @@
  * drift from what a real report looks like. Deliberate differences from a
  * paid report:
  *   - a clearly labelled "Sample report" header above the cards;
- *   - read-only: no workplace editor, no submit-report prompts, no report
+ *   - read-only: no commute-destination editor, no submit-report prompts, no report
  *     chat, and it NEVER fires a live coverage lookup (this is a public,
  *     pre-payment page — it must not burn the founder's OpenCelliD quota);
  *   - the security card carries the community-sourced qualitative signal for
@@ -128,7 +128,6 @@ export default function SampleReport({ profile, reports, onBack, onGetYours }: S
           profile={profile}
           reports={reports}
           coverage={coverage}
-          workDestination={null}
           communitySecuritySignal={SAMPLE_SECURITY_SIGNAL}
         />
       </div>

@@ -16,6 +16,7 @@ import { ArrowLeft, Droplets, MapPin, PlusCircle, ShieldCheck, Users, Zap } from
 import { tw, typography } from '../../lib/colors';
 import { AreaKey, AreaProfile, Listing, TenantReport, areaName } from './types';
 import { AreaCommuteRow, CommutePayload, requestAddressMeasurement, resolveCommute } from './commute';
+import type { CommuteDestination } from './account';
 import { AreaCoverageRow, requestCoverageCheck, resolveCoverage } from './coverage';
 import ReportGate from './ReportGate';
 import ReportView from './ReportView';
@@ -34,11 +35,16 @@ interface AreaReportProps {
   accountLoading: boolean;
   accountError?: string | null;
   onRetryAccount?: () => void;
+  /** ADDRESS of the active saved destination — drives the route machinery. */
   workDestination?: string | null;
+  /** All saved destinations + which one is active (card label and switcher). */
+  destinations?: CommuteDestination[];
+  activeDestinationIndex?: number;
+  onSaveDestination?: (dest: CommuteDestination, index: number | null) => void | Promise<void>;
+  onSelectDestination?: (index: number) => void | Promise<void>;
   onBack: () => void;
   onSignedIn: (email: string) => void;
   onUnlock: () => Promise<void>;
-  onSaveWorkDestination?: (destination: string) => void;
   onSubmitReport: () => void;
 }
 
@@ -55,10 +61,13 @@ export default function AreaReport({
   accountError,
   onRetryAccount,
   workDestination,
+  destinations,
+  activeDestinationIndex,
+  onSaveDestination,
+  onSelectDestination,
   onBack,
   onSignedIn,
   onUnlock,
-  onSaveWorkDestination,
   onSubmitReport,
 }: AreaReportProps) {
   const areaReports = reports.filter((r) => r.area_key === areaKey);
@@ -211,8 +220,10 @@ export default function AreaReport({
               profile={profile}
               reports={reports}
               coverage={coverage}
-              workDestination={workDestination}
-              onSaveWorkDestination={onSaveWorkDestination}
+              destinations={destinations}
+              activeDestinationIndex={activeDestinationIndex}
+              onSaveDestination={onSaveDestination}
+              onSelectDestination={onSelectDestination}
               commuteRequestState={commuteRequestState}
               onRetryCommute={workDestination ? () => void loadAddressCommute(true) : undefined}
               onSubmitReport={onSubmitReport}

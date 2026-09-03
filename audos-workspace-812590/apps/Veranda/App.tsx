@@ -44,31 +44,44 @@ import {
   AreaKey,
   AreaProfile,
   AccountUnlock,
+  BUDGET_PRESETS,
+  BudgetRange,
   FREE_UNLOCK_LIMIT,
   Listing,
   RenterAccount,
   SUBSCRIPTION_PRICE_NGN,
   TenantReport,
   areaName,
+  budgetAnnualLabel,
+  budgetMonthlyLabel,
+  budgetRangeLabel,
   detectAreaKey,
+  monthlyFromAnnual,
+  naira,
+  rentInBudget,
 } from './types';
 import { ensureAreaProfilesSeeded, ensureTenantReportsSeeded } from './seedData';
 import {
+  CommuteDestination,
+  DestinationState,
+  RenterDestinationRow,
   SubscriptionInfo,
   checkStripeSessionPaid,
   clearPendingUnlock,
   clearStoredSession,
+  destinationStateFromLegacy,
   ensureRenterAccount,
   fetchAccountUnlockAccess,
   fetchSubscriptionStatus,
   isSubscriptionActive,
   normalizeEmail,
+  parseDestinationRow,
   readPendingUnlock,
   readStoredSession,
   recordUnlock,
-  saveWorkDestination,
+  saveDestinationState,
 } from './account';
-import { ListingCard, ListingCardSkeleton, cleanScrapedText } from './listingDisplay';
+import { ListingCard, ListingCardSkeleton, cleanScrapedText, rentValue } from './listingDisplay';
 import ListingDetail from './ListingDetail';
 import AreaReport from './AreaReport';
 import SubmitReport from './SubmitReport';
@@ -172,13 +185,30 @@ export default function VerandaApp() {
   const [keyword, setKeyword] = useState('');
   const [homeQuery, setHomeQuery] = useState('');
   const [bedrooms, setBedrooms] = useState(-1);
+  const [budget, setBudget] = useState<BudgetRange | null>(null);
+
+  // Area and budget are resolved server-side. The catalog holds far more homes
+  // than one page, so a price cut applied only to the loaded rows would search
+  // the newest 100 listings instead of the whole of Lagos.
+  const listingFilters = useMemo(() => {
+    const filters: Array<{ column: string; operator: string; value: unknown }> = [];
+    if (areaFilter) filters.push({ column: 'area_key', operator: 'eq', value: areaFilter });
+    if (budget) {
+      // A listing with no price can't be budget-checked, so the floor is never 0.
+      filters.push({ column: 'rent_year_ngn', operator: 'gte', value: Math.max(budget.min, 1) });
+      if (budget.max != null) {
+        filters.push({ column: 'rent_year_ngn', operator: 'lte', value: budget.max });
+      }
+    }
+    return filters.length ? filters : undefined;
+  }, [areaFilter, budget]);
 
   // ---------------- data hooks ----------------
   const listingsHook = window.useWorkspaceDB<Listing>('listings', {
     shared: true,
     limit: 100,
     orderBy: { column: 'created_at', direction: 'desc' },
-    filters: areaFilter ? [{ column: 'area_key', operator: 'eq', value: areaFilter }] : undefined,
+    filters: listingFilters,
   });
   const profilesHook = window.useWorkspaceDB<AreaProfile>('area_profiles', {
     shared: true,
@@ -199,6 +229,15 @@ export default function VerandaApp() {
     shared: true,
     limit: 1,
     filters: [{ column: 'email', operator: 'eq', value: accountEmail || '__nobody__' }],
+  });
+  // Newest commute-destinations snapshot for this account. The table is
+  // INSERT-ONLY (see account.ts): the latest row per email is the truth, so
+  // one ordered row is all the app ever needs.
+  const destinationRowsHook = window.useWorkspaceDB<RenterDestinationRow>('renter_destinations', {
+    shared: true,
+    limit: 1,
+    orderBy: { column: 'id', direction: 'desc' },
+    filters: [{ column: 'account_email', operator: 'eq', value: accountEmail || '__nobody__' }],
   });
 
   // Persisted sessions from before renter_accounts was introduced may be
@@ -232,6 +271,7 @@ export default function VerandaApp() {
     setSubError(null);
     setAccountRetryNonce((value) => value + 1);
     accountRowHook.refresh();
+    destinationRowsHook.refresh();
     unlocksHook.refresh();
     void refreshSub(accountEmail);
   };
@@ -461,9 +501,63 @@ export default function VerandaApp() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pendingAreaUnlock, accountEmail, unlocksHook.loading]);
 
-  const handleSaveWorkDestination = (destination: string): Promise<void> => {
-    if (!accountEmail) return Promise.resolve();
-    return saveWorkDestination(accountEmail, destination).then(() => accountRowHook.refresh());
+  // ---------------- commute destinations (labelled, up to 3) ----------------
+  // Optimistic copy of the last saved state so the commute card flips the
+  // moment a save is confirmed; the hook refresh catches up behind it. Reset
+  // whenever the signed-in account changes.
+  const [localDestinationState, setLocalDestinationState] = useState<DestinationState | null>(null);
+  useEffect(() => {
+    setLocalDestinationState(null);
+  }, [accountEmail]);
+
+  const destinationState: DestinationState = localDestinationState ??
+    parseDestinationRow((destinationRowsHook.data || [])[0]) ??
+    destinationStateFromLegacy((accountRowHook.data || [])[0]?.work_destination) ?? {
+      destinations: [],
+      activeIndex: 0,
+    };
+  const destinations = destinationState.destinations;
+  const activeDestinationIndex = Math.min(
+    Math.max(destinationState.activeIndex, 0),
+    Math.max(destinations.length - 1, 0)
+  );
+  const workDestination = destinations[activeDestinationIndex]?.address || null;
+
+  const persistDestinations = async (state: DestinationState) => {
+    if (!accountEmail) throw new Error('Sign in first to save a destination.');
+    await saveDestinationState(accountEmail, state);
+    setLocalDestinationState(state);
+    destinationRowsHook.refresh();
+    accountRowHook.refresh();
+  };
+
+  /** index null appends (and activates) a destination; a number replaces it. */
+  const handleSaveDestination = async (dest: CommuteDestination, index: number | null) => {
+    const next = destinations.slice();
+    let activeIndex: number;
+    if (index == null) {
+      next.push(dest);
+      activeIndex = next.length - 1;
+    } else {
+      activeIndex = Math.min(Math.max(index, 0), Math.max(next.length - 1, 0));
+      next[activeIndex] = dest;
+    }
+    await persistDestinations({ destinations: next, activeIndex });
+  };
+
+  const handleSelectDestination = async (index: number) => {
+    if (index === activeDestinationIndex || !destinations[index]) return;
+    await persistDestinations({ destinations, activeIndex: index });
+  };
+
+  const handleDeleteDestination = async (index: number) => {
+    if (!destinations[index]) return;
+    const next = destinations.filter((_, i) => i !== index);
+    const activeIndex =
+      activeDestinationIndex > index
+        ? activeDestinationIndex - 1
+        : Math.min(activeDestinationIndex, Math.max(next.length - 1, 0));
+    await persistDestinations({ destinations: next, activeIndex });
   };
 
   const openFromHistory = (u: AccountUnlock) => {
@@ -556,8 +650,11 @@ export default function VerandaApp() {
     return (listingsHook.data || [])
       .filter((l) => (l.status || 'active') === 'active')
       .filter((l) => listingMatchesKeyword(l, keyword.trim()))
-      .filter((l) => (bedrooms < 0 ? true : (l.bedrooms ?? 0) >= bedrooms));
-  }, [listingsHook.data, keyword, bedrooms]);
+      .filter((l) => (bedrooms < 0 ? true : (l.bedrooms ?? 0) >= bedrooms))
+      // The same cut the query already made, so results never disagree with the
+      // selected budget while a refetch is in flight.
+      .filter((l) => rentInBudget(rentValue(l), budget));
+  }, [listingsHook.data, keyword, bedrooms, budget]);
 
   // -------------------------------------------------------------------------
   // Render
@@ -584,11 +681,14 @@ export default function VerandaApp() {
             accountLoading={unlocksHook.loading || subLoading}
             accountError={accountAccessError}
             onRetryAccount={retryAccountLoad}
-            workDestination={(accountRowHook.data || [])[0]?.work_destination || null}
+            workDestination={workDestination}
+            destinations={destinations}
+            activeDestinationIndex={activeDestinationIndex}
+            onSaveDestination={accountEmail ? handleSaveDestination : undefined}
+            onSelectDestination={accountEmail ? handleSelectDestination : undefined}
             onBack={() => setDetailListing(null)}
             onSignedIn={handleSignedIn}
             onUnlock={handleUnlock}
-            onSaveWorkDestination={accountEmail ? handleSaveWorkDestination : undefined}
             onSubmitReport={(key) => openSubmitReport(key)}
           />
         ) : view === 'verify' && areaReport ? (
@@ -604,11 +704,14 @@ export default function VerandaApp() {
             accountLoading={unlocksHook.loading || subLoading}
             accountError={accountAccessError}
             onRetryAccount={retryAccountLoad}
-            workDestination={(accountRowHook.data || [])[0]?.work_destination || null}
+            workDestination={workDestination}
+            destinations={destinations}
+            activeDestinationIndex={activeDestinationIndex}
+            onSaveDestination={accountEmail ? handleSaveDestination : undefined}
+            onSelectDestination={accountEmail ? handleSelectDestination : undefined}
             onBack={() => goView('home')}
             onSignedIn={handleSignedIn}
             onUnlock={handleUnlockArea}
-            onSaveWorkDestination={accountEmail ? handleSaveWorkDestination : undefined}
             onSubmitReport={() => openSubmitReport(areaReport.areaKey)}
           />
         ) : view === 'submit' ? (
@@ -646,8 +749,11 @@ export default function VerandaApp() {
             accountError={accountAccessError}
             onRetryAccount={retryAccountLoad}
             isEntrepreneur={isEntrepreneur}
-            workDestination={(accountRowHook.data || [])[0]?.work_destination || null}
-            onSaveWorkDestination={accountEmail ? handleSaveWorkDestination : undefined}
+            destinations={destinations}
+            activeDestinationIndex={activeDestinationIndex}
+            onSaveDestination={accountEmail ? handleSaveDestination : undefined}
+            onSelectDestination={accountEmail ? handleSelectDestination : undefined}
+            onDeleteDestination={accountEmail ? handleDeleteDestination : undefined}
             onSignedIn={handleSignedIn}
             onSignOut={handleSignOut}
             onOpenUnlock={openFromHistory}
@@ -662,9 +768,11 @@ export default function VerandaApp() {
             areaFilter={areaFilter}
             keyword={keyword}
             bedrooms={bedrooms}
+            budget={budget}
             onAreaFilter={setAreaFilter}
             onKeyword={setKeyword}
             onBedrooms={setBedrooms}
+            onBudget={setBudget}
             onOpen={(l) => setDetailListing(l)}
           />
         )}
@@ -914,9 +1022,11 @@ function BrowseView({
   areaFilter,
   keyword,
   bedrooms,
+  budget,
   onAreaFilter,
   onKeyword,
   onBedrooms,
+  onBudget,
   onOpen,
 }: {
   loading: boolean;
@@ -924,9 +1034,11 @@ function BrowseView({
   areaFilter: AreaKey | null;
   keyword: string;
   bedrooms: number;
+  budget: BudgetRange | null;
   onAreaFilter: (key: AreaKey | null) => void;
   onKeyword: (kw: string) => void;
   onBedrooms: (b: number) => void;
+  onBudget: (b: BudgetRange | null) => void;
   onOpen: (l: Listing) => void;
 }) {
   return (
@@ -1005,6 +1117,9 @@ function BrowseView({
         ))}
       </div>
 
+      {/* Budget */}
+      <BudgetFilter budget={budget} onBudget={onBudget} />
+
       {loading ? (
         <ul className="grid grid-cols-1 sm:grid-cols-2 gap-3" data-testid="browse-skeleton" aria-hidden="true">
           <ListingCardSkeleton />
@@ -1017,8 +1132,19 @@ function BrowseView({
           <Search className={`w-8 h-8 mx-auto mb-3 ${tw.icon.muted}`} />
           <p className={`text-sm ${typography.weight.medium} ${typography.color.primary}`}>No homes match</p>
           <p className={`text-xs mt-1.5 ${typography.color.muted}`}>
-            Try a different area or clear the keyword — new listings are aggregated regularly.
+            {budget
+              ? `Nothing in ${budgetRangeLabel(budget)} here yet. Try a wider bracket, another area, or clear the keyword — new listings are aggregated regularly.`
+              : 'Try a different area or clear the keyword — new listings are aggregated regularly.'}
           </p>
+          {budget && (
+            <button
+              onClick={() => onBudget(null)}
+              className={`mt-3 px-3.5 py-2 rounded-xl text-xs ${tw.button.secondary}`}
+              data-testid="button-clear-budget-empty"
+            >
+              Show any budget
+            </button>
+          )}
         </div>
       ) : (
         <>
@@ -1026,6 +1152,7 @@ function BrowseView({
             {results.length} home{results.length === 1 ? '' : 's'}
             {areaFilter ? ` in ${areaName(areaFilter)}` : ''}
             {keyword.trim() ? ` matching “${keyword.trim()}”` : ''}
+            {budget ? ` · ${budgetRangeLabel(budget)}` : ''}
           </p>
           <ul className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             {results.map((listing) => (
@@ -1038,6 +1165,187 @@ function BrowseView({
             ))}
           </ul>
         </>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Budget filter — annual naira, because that is how Lagos landlords quote rent
+// ---------------------------------------------------------------------------
+
+/** Accepts what renters actually type: "3,000,000", "₦3m", "500k". */
+function parseBudgetAmount(raw: string): number {
+  const text = raw.trim().toLowerCase().replace(/[₦,\s]/g, '');
+  if (!text) return 0;
+  const match = text.match(/^(\d+(?:\.\d+)?)(m|k)?$/);
+  if (!match) return 0;
+  const value = parseFloat(match[1]);
+  if (isNaN(value)) return 0;
+  const multiplier = match[2] === 'm' ? 1_000_000 : match[2] === 'k' ? 1_000 : 1;
+  return Math.round(value * multiplier);
+}
+
+function BudgetFilter({
+  budget,
+  onBudget,
+}: {
+  budget: BudgetRange | null;
+  onBudget: (b: BudgetRange | null) => void;
+}) {
+  const [minText, setMinText] = useState('');
+  const [maxText, setMaxText] = useState('');
+
+  // The preset chips and Clear set the same range the boxes do, so mirror the
+  // selection back into them — while leaving the renter's own keystrokes alone
+  // as long as they still read as the same amount.
+  useEffect(() => {
+    const nextMin = budget && budget.min > 0 ? String(budget.min) : '';
+    const nextMax = budget && budget.max != null ? String(budget.max) : '';
+    setMinText((current) =>
+      parseBudgetAmount(current) === parseBudgetAmount(nextMin) ? current : nextMin
+    );
+    setMaxText((current) =>
+      parseBudgetAmount(current) === parseBudgetAmount(nextMax) ? current : nextMax
+    );
+  }, [budget]);
+
+  const commit = (rawMin: string, rawMax: string) => {
+    const min = parseBudgetAmount(rawMin);
+    const max = parseBudgetAmount(rawMax);
+    if (!min && !max) {
+      onBudget(null);
+      return;
+    }
+    onBudget({ min, max: max || null });
+  };
+
+  const typedMin = parseBudgetAmount(minText);
+  const typedMax = parseBudgetAmount(maxText);
+  const inverted = typedMin > 0 && typedMax > 0 && typedMax < typedMin;
+
+  const chipClass = (active: boolean) =>
+    `shrink-0 px-2.5 py-1.5 rounded-full text-xs border transition-all ${
+      active
+        ? `${tw.button.primary} border-transparent`
+        : `bg-[var(--space-surface-muted)] border-[var(--space-border-default)] ${typography.color.secondary}`
+    }`;
+
+  const fields = [
+    {
+      key: 'min',
+      label: 'Min ₦/yr',
+      placeholder: 'No minimum',
+      value: minText,
+      amount: typedMin,
+      onChange: (v: string) => {
+        setMinText(v);
+        commit(v, maxText);
+      },
+    },
+    {
+      key: 'max',
+      label: 'Max ₦/yr',
+      placeholder: 'No maximum',
+      value: maxText,
+      amount: typedMax,
+      onChange: (v: string) => {
+        setMaxText(v);
+        commit(minText, v);
+      },
+    },
+  ];
+
+  return (
+    <div
+      className="rounded-2xl border border-[var(--space-border-default)] bg-[var(--space-surface-card)] p-3 mb-3"
+      data-testid="budget-filter"
+    >
+      <div className="flex items-center justify-between gap-2">
+        <p
+          className={`flex items-center gap-1.5 text-xs ${typography.weight.semibold} ${typography.color.primary}`}
+        >
+          <Wallet className={`w-3.5 h-3.5 ${tw.icon.primary}`} aria-hidden="true" /> Budget
+        </p>
+        {budget && (
+          <button
+            onClick={() => onBudget(null)}
+            className={`px-2 py-1 rounded-lg text-[11px] ${typography.weight.medium} ${typography.color.brand} hover:bg-[var(--space-surface-muted)] transition-colors`}
+            data-testid="button-clear-budget"
+          >
+            Clear
+          </button>
+        )}
+      </div>
+
+      {/* Bracket chips — the Lagos rent conversation, one tap each */}
+      <div
+        className="flex gap-1.5 overflow-x-auto pb-1.5 mt-2 -mx-3 px-3"
+        style={{ scrollbarWidth: 'none' }}
+      >
+        <button
+          onClick={() => onBudget(null)}
+          className={chipClass(budget === null)}
+          data-testid="budget-chip-any"
+        >
+          Any budget
+        </button>
+        {BUDGET_PRESETS.map((preset) => {
+          const active = budget != null && budget.min === preset.min && budget.max === preset.max;
+          return (
+            <button
+              key={preset.key}
+              onClick={() => onBudget(active ? null : { min: preset.min, max: preset.max })}
+              className={chipClass(active)}
+              data-testid={`budget-chip-${preset.key}`}
+            >
+              {preset.label}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Exact amounts, for a renter whose ceiling sits between the brackets */}
+      <div className="grid grid-cols-2 gap-2">
+        {fields.map((field) => (
+          <div key={field.key}>
+            <label
+              htmlFor={`budget-${field.key}`}
+              className={`block text-[10px] uppercase tracking-wide mb-1 ${typography.color.muted}`}
+            >
+              {field.label}
+            </label>
+            <input
+              id={`budget-${field.key}`}
+              type="text"
+              inputMode="numeric"
+              value={field.value}
+              onChange={(e) => field.onChange(e.target.value)}
+              placeholder={field.placeholder}
+              className={`${tw.input.base} ${tw.input.default} px-3 py-2 text-sm rounded-xl`}
+              data-testid={`input-budget-${field.key}`}
+            />
+            <p className={`text-[10px] mt-1 ${typography.color.muted}`}>
+              {field.amount > 0 ? `${naira(monthlyFromAnnual(field.amount))}/mo` : '\u00a0'}
+            </p>
+          </div>
+        ))}
+      </div>
+
+      {inverted ? (
+        <p className={`text-[11px] mt-1 ${typography.color.danger}`} data-testid="budget-summary">
+          Your maximum is below your minimum — swap them to see homes again.
+        </p>
+      ) : budget ? (
+        <p className={`text-[11px] mt-1 ${typography.color.secondary}`} data-testid="budget-summary">
+          <span className={typography.weight.semibold}>{budgetAnnualLabel(budget)}</span>
+          <span className={typography.color.muted}> — {budgetMonthlyLabel(budget)}</span>
+        </p>
+      ) : (
+        <p className={`text-[11px] mt-1 ${typography.color.muted}`} data-testid="budget-summary">
+          Any budget. Lagos rent is quoted by the year — tap a bracket or type your own ceiling, and
+          we’ll show what it works out to per month.
+        </p>
       )}
     </div>
   );

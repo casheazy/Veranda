@@ -17,9 +17,11 @@ import {
   Loader2,
   LogOut,
   Pencil,
+  PlusCircle,
   RefreshCw,
   ShieldCheck,
   Ticket,
+  Trash2,
   TriangleAlert,
   UserRound,
 } from 'lucide-react';
@@ -31,9 +33,16 @@ import {
   SUBSCRIPTION_PRICE_NGN,
   areaName,
 } from './types';
-import { SubscriptionInfo, isSubscriptionActive, requestBillingPortal } from './account';
+import {
+  CommuteDestination,
+  MAX_COMMUTE_DESTINATIONS,
+  SubscriptionInfo,
+  isSubscriptionActive,
+  requestBillingPortal,
+} from './account';
 import { matchWorkHub } from './commute';
 import { EmailOtpSignIn, SubscribeCard } from './ReportGate';
+import { DestinationEditor } from './ReportView';
 
 interface AccountPageProps {
   accountEmail: string | null;
@@ -44,10 +53,16 @@ interface AccountPageProps {
   accountError?: string | null;
   onRetryAccount?: () => void;
   isEntrepreneur: boolean;
-  /** The renter's saved "where do you work" destination, if any. */
-  workDestination?: string | null;
-  /** Persist a work destination for this account (commute personalization). */
-  onSaveWorkDestination?: (destination: string) => void | Promise<void>;
+  /** The renter's saved commute destinations (label + address). */
+  destinations?: CommuteDestination[];
+  /** Index of the destination report commute cards currently show. */
+  activeDestinationIndex?: number;
+  /** Persist a destination: index null appends, a number replaces. Throws on failure. */
+  onSaveDestination?: (dest: CommuteDestination, index: number | null) => void | Promise<void>;
+  /** Switch which saved destination reports show. Throws on failure. */
+  onSelectDestination?: (index: number) => void | Promise<void>;
+  /** Remove a saved destination. Throws on failure. */
+  onDeleteDestination?: (index: number) => void | Promise<void>;
   onSignedIn: (email: string) => void;
   onSignOut: () => void;
   onOpenUnlock: (unlock: AccountUnlock) => void;
@@ -55,142 +70,194 @@ interface AccountPageProps {
 }
 
 /**
- * "Where do you work?" — the account-level home of the commute destination
- * that the Distance-to-work report card personalizes against. Honest by
- * design: the copy promises measured routes only, never estimates.
+ * "Commute destinations" — the account-level home of the labelled places the
+ * commute card can route to (work, school, market, church, family). Up to
+ * MAX_COMMUTE_DESTINATIONS per account; the active one is what every report's
+ * commute card shows, and it can also be switched right on the card. Honest
+ * by design: the copy promises measured routes only, never estimates.
  */
-function WorkDestinationCard({
-  workDestination,
+function CommuteDestinationsCard({
+  destinations,
+  activeIndex,
   onSave,
+  onSelect,
+  onDelete,
 }: {
-  workDestination: string | null;
-  onSave: (destination: string) => void | Promise<void>;
+  destinations: CommuteDestination[];
+  activeIndex: number;
+  onSave: (dest: CommuteDestination, index: number | null) => void | Promise<void>;
+  onSelect?: (index: number) => void | Promise<void>;
+  onDelete?: (index: number) => void | Promise<void>;
 }) {
-  const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState('');
-  const [saving, setSaving] = useState(false);
+  const [editing, setEditing] = useState<number | 'new' | null>(null);
   const [justSaved, setJustSaved] = useState(false);
-  const [saveError, setSaveError] = useState<string | null>(null);
-  // Optimistic value so the card flips to display mode the moment the save
-  // lands, before the parent's data hook refresh catches up.
-  const [localDest, setLocalDest] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [busyIndex, setBusyIndex] = useState<number | null>(null);
 
-  const effectiveDest = localDest ?? workDestination;
-  const hub = matchWorkHub(effectiveDest);
-  const showForm = editing || !effectiveDest;
-
-  const save = async () => {
-    const dest = draft.trim();
-    if (!dest || saving) return;
-    setSaving(true);
-    setSaveError(null);
+  const runRowAction = async (index: number, fn: () => void | Promise<void>) => {
+    setActionError(null);
+    setJustSaved(false);
+    setBusyIndex(index);
     try {
-      await Promise.resolve(onSave(dest));
-      setLocalDest(dest);
-      setEditing(false);
-      setJustSaved(true);
+      await Promise.resolve(fn());
     } catch (error) {
-      setSaveError(
-        error instanceof Error ? error.message : 'We could not save your workplace. Please try again.'
+      setActionError(
+        error instanceof Error ? error.message : 'That change could not be saved — please try again.'
       );
     } finally {
-      setSaving(false);
+      setBusyIndex(null);
     }
   };
 
+  const hub = matchWorkHub(destinations[activeIndex]?.address);
+
   return (
-    <div className={`${tw.card.default} rounded-2xl p-4`} data-testid="card-work-destination">
+    <div className={`${tw.card.default} rounded-2xl p-4`} data-testid="card-commute-destinations">
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-2">
           <Briefcase className={`w-4 h-4 ${tw.icon.primary}`} />
-          <p className={`text-sm ${typography.weight.semibold} ${typography.color.primary}`}>Commute destination</p>
+          <p className={`text-sm ${typography.weight.semibold} ${typography.color.primary}`}>
+            Commute destinations
+            {destinations.length > 0 ? ` · ${destinations.length} of ${MAX_COMMUTE_DESTINATIONS}` : ''}
+          </p>
         </div>
-        {effectiveDest && !editing && (
+        {destinations.length > 0 && destinations.length < MAX_COMMUTE_DESTINATIONS && editing === null && (
           <button
             onClick={() => {
-              setDraft(effectiveDest);
               setJustSaved(false);
-              setSaveError(null);
-              setEditing(true);
+              setActionError(null);
+              setEditing('new');
             }}
             className={`shrink-0 flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[11px] ${tw.button.secondary}`}
-            data-testid="button-edit-work-destination"
+            data-testid="button-add-destination-account"
           >
-            <Pencil className="w-3 h-3" /> Change
+            <PlusCircle className="w-3 h-3" /> Add
           </button>
         )}
       </div>
 
-      {showForm ? (
-        <div className="mt-3">
-          <div className="flex gap-2">
-            <input
-              type="text"
-              value={draft}
-              onChange={(e) => setDraft(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && save()}
-              placeholder="Where do you work? e.g. Marina, Lagos Island"
-              className={`${tw.input.base} ${tw.input.default} text-xs rounded-xl py-2`}
-              data-testid="input-account-work-destination"
-            />
-            <button
-              onClick={save}
-              disabled={saving || !draft.trim()}
-              className={`shrink-0 px-3 py-2 rounded-xl text-xs flex items-center gap-1.5 ${tw.button.primary} disabled:opacity-50`}
-              data-testid="button-account-save-work"
-            >
-              {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : null}
-              Save
-            </button>
-          </div>
-          {editing && (
-            <button
-              onClick={() => {
-                setEditing(false);
-                setSaveError(null);
-              }}
-              className={`mt-1.5 py-1 text-[11px] ${typography.color.muted} underline underline-offset-2`}
-            >
-              Keep “{effectiveDest}”
-            </button>
-          )}
-          {saveError && (
-            <div
-              className="mt-2.5 flex items-center justify-between gap-3 rounded-xl border border-[var(--space-semantic-danger)] bg-[var(--space-semantic-danger-50)] p-2.5"
-              role="alert"
-              data-testid="work-destination-error"
-            >
-              <p className={`text-[11px] ${typography.color.danger}`}>{saveError}</p>
-              <button
-                onClick={save}
-                disabled={saving}
-                className={`shrink-0 inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-[11px] ${tw.button.secondary} disabled:opacity-50`}
-                data-testid="button-retry-save-work"
-              >
-                <RefreshCw className={`w-3 h-3 ${saving ? 'animate-spin' : ''}`} /> Try again
-              </button>
-            </div>
-          )}
-        </div>
-      ) : (
+      {justSaved && (
+        <p className={`text-xs mt-2 ${typography.color.success}`} data-testid="account-destination-saved-note">
+          Saved — your reports will use your destinations.
+        </p>
+      )}
+      {actionError && (
+        <p className={`text-xs mt-2 ${typography.color.danger}`} role="alert" data-testid="destination-action-error">
+          {actionError}
+        </p>
+      )}
+
+      {destinations.length === 0 && editing === null ? (
         <>
-          <p className={`text-sm mt-2 ${typography.weight.medium} ${typography.color.primary}`} data-testid="text-work-destination">
-            {effectiveDest}
+          <p className={`text-xs mt-2 ${typography.color.muted}`}>
+            Where do you commute to? Save any place you go often — your office, school, market,
+            church or a family house — with a short label, and every report's commute card shows
+            the real Lagos route to it.
           </p>
-          {justSaved && (
-            <p className={`text-xs mt-1 ${typography.color.success}`}>Saved — your reports will use this destination.</p>
-          )}
-          {hub && (
-            <p className={`text-[11px] mt-1 ${typography.color.muted}`}>
-              Matches the {hub.label} work hub — exact property routes take priority, with this measured area baseline as fallback.
-            </p>
-          )}
+          <DestinationEditor
+            onSave={async (dest) => {
+              await Promise.resolve(onSave(dest, null));
+              setJustSaved(true);
+            }}
+          />
         </>
+      ) : (
+        <ul className="mt-2.5 space-y-2">
+          {destinations.map((dest, i) => (
+            <li
+              key={`${dest.label}-${i}`}
+              className={`p-3 rounded-xl ${tw.bg.muted} border border-[var(--space-border-default)]`}
+              data-testid={`destination-row-${i}`}
+            >
+              {editing === i ? (
+                <DestinationEditor
+                  initial={dest}
+                  onSave={async (next) => {
+                    await Promise.resolve(onSave(next, i));
+                    setEditing(null);
+                    setJustSaved(true);
+                  }}
+                  onCancel={() => setEditing(null)}
+                />
+              ) : (
+                <>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className={`text-xs ${typography.weight.semibold} ${typography.color.primary}`}>
+                      {dest.label}
+                    </span>
+                    {i === activeIndex ? (
+                      <span className={`${tw.badge.default} ${tw.badge.primary}`}>Shown on reports</span>
+                    ) : onSelect ? (
+                      <button
+                        onClick={() => runRowAction(i, () => onSelect(i))}
+                        disabled={busyIndex != null}
+                        className={`${tw.badge.default} ${tw.badge.neutral} hover:brightness-95 disabled:opacity-50`}
+                        data-testid={`button-activate-destination-${i}`}
+                      >
+                        Show on reports
+                      </button>
+                    ) : null}
+                    {busyIndex === i && <Loader2 className={`w-3 h-3 animate-spin ${tw.icon.muted}`} />}
+                  </div>
+                  <p className={`text-xs mt-1 ${typography.color.secondary}`} data-testid={`destination-address-${i}`}>
+                    {dest.address}
+                  </p>
+                  <div className="flex items-center gap-1.5 mt-2">
+                    <button
+                      onClick={() => {
+                        setJustSaved(false);
+                        setActionError(null);
+                        setEditing(i);
+                      }}
+                      disabled={busyIndex != null}
+                      className={`px-2.5 py-1.5 rounded-lg text-[11px] flex items-center gap-1 ${tw.button.secondary} disabled:opacity-50`}
+                      data-testid={`button-edit-destination-${i}`}
+                    >
+                      <Pencil className="w-3 h-3" /> Edit
+                    </button>
+                    {onDelete && (
+                      <button
+                        onClick={() => runRowAction(i, () => onDelete(i))}
+                        disabled={busyIndex != null}
+                        className={`px-2.5 py-1.5 rounded-lg text-[11px] flex items-center gap-1 ${tw.button.ghost} disabled:opacity-50`}
+                        data-testid={`button-remove-destination-${i}`}
+                      >
+                        <Trash2 className="w-3 h-3" /> Remove
+                      </button>
+                    )}
+                  </div>
+                </>
+              )}
+            </li>
+          ))}
+          {editing === 'new' && (
+            <li className={`p-3 rounded-xl ${tw.bg.muted} border border-[var(--space-border-default)]`}>
+              <DestinationEditor
+                saveLabel="Add"
+                onSave={async (dest) => {
+                  await Promise.resolve(onSave(dest, null));
+                  setEditing(null);
+                  setJustSaved(true);
+                }}
+                onCancel={() => setEditing(null)}
+              />
+            </li>
+          )}
+        </ul>
+      )}
+
+      {hub && (
+        <p className={`text-[11px] mt-2 ${typography.color.muted}`}>
+          Your report destination matches the {hub.label} work hub — exact property routes take
+          priority, with this measured area baseline as fallback.
+        </p>
       )}
 
       <p className={`text-[11px] mt-2 ${typography.color.muted}`}>
-        Powers the commute card on every report you unlock. Veranda checks Lagos public transport
-        first — BRT, bus, ferry and rail where available — then adds a driving fallback for coverage gaps.
+        Powers the commute card on every report you unlock — save up to {MAX_COMMUTE_DESTINATIONS}{' '}
+        places (work, school, market, church, family) and switch between them right on the card.
+        Veranda checks Lagos public transport first — BRT, bus, ferry and rail where available —
+        then adds a driving fallback for coverage gaps.
       </p>
     </div>
   );
@@ -205,8 +272,11 @@ export default function AccountPage({
   accountError,
   onRetryAccount,
   isEntrepreneur,
-  workDestination,
-  onSaveWorkDestination,
+  destinations,
+  activeDestinationIndex,
+  onSaveDestination,
+  onSelectDestination,
+  onDeleteDestination,
   onSignedIn,
   onSignOut,
   onOpenUnlock,
@@ -412,9 +482,15 @@ export default function AccountPage({
           )}
         </div>
 
-        {/* Commute destination */}
-        {onSaveWorkDestination && (
-          <WorkDestinationCard workDestination={workDestination || null} onSave={onSaveWorkDestination} />
+        {/* Commute destinations */}
+        {onSaveDestination && (
+          <CommuteDestinationsCard
+            destinations={destinations || []}
+            activeIndex={activeDestinationIndex ?? 0}
+            onSave={onSaveDestination}
+            onSelect={onSelectDestination}
+            onDelete={onDeleteDestination}
+          />
         )}
 
         {/* Unlock history */}

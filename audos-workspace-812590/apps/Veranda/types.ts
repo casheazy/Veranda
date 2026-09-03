@@ -291,6 +291,78 @@ export function nairaShort(n?: number | string | null): string {
 }
 
 // ---------------------------------------------------------------------------
+// Budget brackets (browse filter)
+//
+// Nigerian landlords quote rent by the year, so every figure here is annual
+// naira — the monthly equivalent is only ever a sanity-check line shown next
+// to it, never the number the filter works in.
+// ---------------------------------------------------------------------------
+
+export interface BudgetRange {
+  /** Inclusive floor in ₦/yr. 0 means "no floor". */
+  min: number;
+  /** Inclusive ceiling in ₦/yr. null means "no ceiling". */
+  max: number | null;
+}
+
+export interface BudgetPreset extends BudgetRange {
+  key: string;
+  /** Chip text — the shorthand Lagos renters say out loud ("under 500k"). */
+  label: string;
+}
+
+/** Tap-to-select brackets covering the Lagos rental market end to end. */
+export const BUDGET_PRESETS: BudgetPreset[] = [
+  { key: 'under-500k', label: 'Under ₦500k', min: 0, max: 500_000 },
+  { key: '500k-1_2m', label: '₦500k – ₦1.2m', min: 500_000, max: 1_200_000 },
+  { key: '1_2m-3m', label: '₦1.2m – ₦3m', min: 1_200_000, max: 3_000_000 },
+  { key: '3m-6m', label: '₦3m – ₦6m', min: 3_000_000, max: 6_000_000 },
+  { key: 'above-6m', label: 'Above ₦6m', min: 6_000_000, max: null },
+];
+
+/** The figure renters divide out in their head to check they can carry it. */
+export function monthlyFromAnnual(annualNgn: number): number {
+  return Math.round(annualNgn / 12);
+}
+
+/** Compact range for chips and result counts — "₦1.2m – ₦3m/yr". */
+export function budgetRangeLabel(range?: BudgetRange | null): string {
+  if (!range) return 'Any budget';
+  if (range.max == null) return `Above ${nairaShort(range.min)}/yr`;
+  if (range.min <= 0) return `Under ${nairaShort(range.max)}/yr`;
+  return `${nairaShort(range.min)} – ${nairaShort(range.max)}/yr`;
+}
+
+/** Exact naira range — "₦1,200,000 – ₦3,000,000/yr". */
+export function budgetAnnualLabel(range?: BudgetRange | null): string {
+  if (!range) return 'Any budget';
+  if (range.max == null) return `Above ${naira(range.min)}/yr`;
+  if (range.min <= 0) return `Under ${naira(range.max)}/yr`;
+  return `${naira(range.min)} – ${naira(range.max)}/yr`;
+}
+
+/** The same range read monthly — "₦100,000 – ₦250,000/mo". */
+export function budgetMonthlyLabel(range?: BudgetRange | null): string | null {
+  if (!range) return null;
+  if (range.max == null) return `Above ${naira(monthlyFromAnnual(range.min))}/mo`;
+  if (range.min <= 0) return `Under ${naira(monthlyFromAnnual(range.max))}/mo`;
+  return `${naira(monthlyFromAnnual(range.min))} – ${naira(monthlyFromAnnual(range.max))}/mo`;
+}
+
+/**
+ * Whether an annual rent falls inside the selected budget. A listing with no
+ * usable price ("Price on request") can't be budget-checked, so it drops out
+ * as soon as the renter states a budget.
+ */
+export function rentInBudget(rentYearNgn: number, range?: BudgetRange | null): boolean {
+  if (!range) return true;
+  if (!rentYearNgn || rentYearNgn <= 0) return false;
+  if (rentYearNgn < range.min) return false;
+  if (range.max != null && rentYearNgn > range.max) return false;
+  return true;
+}
+
+// ---------------------------------------------------------------------------
 // JSON column helpers (WorkspaceDB json columns may come back parsed or raw)
 // ---------------------------------------------------------------------------
 

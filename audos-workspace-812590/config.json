@@ -323,6 +323,7 @@
   "agent": {
     "welcomeMessage": "Welcome to Veranda. 🏠 Before you hand over a year's rent, check the flood risk, grid power, network coverage, advertised security and commute in one report. Tell me the address or area, or open Find & Verify to check it yourself. Searching is free; your first 5 full reports are too.",
     "starterPrompts": [
+      "Find me a 2-bedroom under ₦3m in Surulere",
       "Does Aguda in Surulere flood?",
       "Which networks work best in Magodo?",
       "Check all five risks at 12 Admiralty Way, Lekki Phase 1",
