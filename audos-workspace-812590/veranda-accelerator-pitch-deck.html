@@ -1,0 +1,563 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Veranda accelerator pitch deck — AI-powered property verification and settlement for Nigerian renters.">
+  <title>Veranda — Accelerator Pitch Deck</title>
+  <style>
+    :root {
+      --cream: #FAF7F2;
+      --paper: #FFFDFC;
+      --terracotta: #C25733;
+      --terracotta-dark: #8F351E;
+      --terracotta-soft: #E8B7A5;
+      --clay: #6B3B2B;
+      --ink: #241C18;
+      --muted: #74665F;
+      --line: #DED4CC;
+      --sage: #66735B;
+      --yellow: #FFF0A6;
+      --shadow: 0 24px 70px rgba(71, 43, 31, .12);
+    }
+
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; scroll-snap-type: y mandatory; }
+    body {
+      margin: 0;
+      color: var(--ink);
+      background: #D9D0C8;
+      font-family: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
+      font-size: clamp(15px, 1.1vw, 19px);
+      line-height: 1.45;
+    }
+
+    a { color: inherit; }
+    .deck { width: 100%; }
+    .slide {
+      position: relative;
+      min-height: 100vh;
+      width: 100%;
+      padding: clamp(36px, 5.6vw, 84px) clamp(32px, 7vw, 112px);
+      overflow: hidden;
+      scroll-snap-align: start;
+      scroll-snap-stop: always;
+      background: var(--cream);
+      isolation: isolate;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+    }
+    .slide::before {
+      content: "";
+      position: absolute;
+      width: 38vw;
+      aspect-ratio: 1;
+      right: -20vw;
+      top: -24vw;
+      border: 1px solid rgba(194, 87, 51, .16);
+      border-radius: 50%;
+      box-shadow: 0 0 0 7vw rgba(194, 87, 51, .035), 0 0 0 14vw rgba(194, 87, 51, .025);
+      z-index: -1;
+    }
+    .slide:nth-child(even) { background: var(--paper); }
+    .slide.dark {
+      color: var(--cream);
+      background: var(--terracotta-dark);
+    }
+    .slide.dark::before { border-color: rgba(250, 247, 242, .18); box-shadow: 0 0 0 7vw rgba(250,247,242,.035), 0 0 0 14vw rgba(250,247,242,.02); }
+
+    .eyebrow {
+      margin: 0 0 18px;
+      color: var(--terracotta);
+      font-size: .75rem;
+      font-weight: 800;
+      letter-spacing: .18em;
+      text-transform: uppercase;
+    }
+    .dark .eyebrow { color: #F3C9B9; }
+    h1, h2, h3, p { margin-top: 0; }
+    h1, h2, .serif {
+      font-family: Georgia, "Times New Roman", serif;
+      letter-spacing: -.035em;
+    }
+    h1 { margin-bottom: 22px; font-size: clamp(4rem, 10.5vw, 9.5rem); line-height: .84; font-weight: 500; }
+    h2 { margin-bottom: clamp(26px, 3vw, 48px); max-width: 980px; font-size: clamp(2.3rem, 5.2vw, 5.4rem); line-height: .98; font-weight: 500; }
+    h3 { margin-bottom: 10px; font-size: 1rem; line-height: 1.2; }
+    p { margin-bottom: 16px; }
+    .lead { max-width: 900px; color: var(--muted); font-size: clamp(1.05rem, 1.65vw, 1.55rem); line-height: 1.45; }
+    .dark .lead, .dark .muted { color: rgba(250, 247, 242, .74); }
+    .muted { color: var(--muted); }
+    .accent { color: var(--terracotta); }
+    .dark .accent { color: #FFD4C3; }
+    .rule { width: 76px; height: 5px; margin: 8px 0 24px; border-radius: 999px; background: var(--terracotta); }
+
+    .slide-no {
+      position: absolute;
+      right: clamp(26px, 3.5vw, 58px);
+      bottom: clamp(22px, 3vw, 44px);
+      color: var(--muted);
+      font-size: .7rem;
+      font-weight: 800;
+      letter-spacing: .16em;
+    }
+    .dark .slide-no { color: rgba(250,247,242,.62); }
+    .domain {
+      position: absolute;
+      left: clamp(26px, 3.5vw, 58px);
+      bottom: clamp(22px, 3vw, 44px);
+      color: var(--muted);
+      font-size: .68rem;
+      font-weight: 750;
+      letter-spacing: .08em;
+    }
+    .dark .domain { color: rgba(250,247,242,.62); }
+
+    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: clamp(24px, 4vw, 68px); align-items: center; }
+    .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: clamp(14px, 2vw, 26px); }
+    .grid-5 { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; }
+    .card {
+      padding: clamp(20px, 2vw, 32px);
+      border: 1px solid var(--line);
+      border-radius: 20px;
+      background: rgba(255, 253, 252, .72);
+    }
+    .dark .card { border-color: rgba(250,247,242,.18); background: rgba(250,247,242,.06); }
+    .card-number { margin-bottom: 12px; color: var(--terracotta); font-family: Georgia, "Times New Roman", serif; font-size: clamp(2.4rem, 5vw, 5rem); line-height: .9; }
+    .dark .card-number { color: #FFD4C3; }
+    .card p:last-child { margin-bottom: 0; }
+    .icon {
+      display: grid;
+      place-items: center;
+      width: 46px;
+      height: 46px;
+      margin-bottom: 24px;
+      border-radius: 14px;
+      color: var(--terracotta-dark);
+      background: #F3D8CD;
+      font-weight: 850;
+    }
+    .dark .icon { color: var(--cream); background: rgba(250,247,242,.14); }
+
+    .placeholder {
+      display: inline-block;
+      padding: .16em .45em;
+      border: 1px dashed #9C7A13;
+      border-radius: 5px;
+      color: #59430B;
+      background: var(--yellow);
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: .74em;
+      font-style: italic;
+      font-weight: 750;
+      letter-spacing: 0;
+      vertical-align: .08em;
+    }
+    .placeholder.block { display: block; width: fit-content; margin-top: 10px; line-height: 1.5; }
+
+    .quote {
+      max-width: 1120px;
+      margin: 0;
+      font-family: Georgia, "Times New Roman", serif;
+      font-size: clamp(2rem, 4.2vw, 4.5rem);
+      line-height: 1.14;
+      letter-spacing: -.025em;
+    }
+    .quote-mark { color: var(--terracotta); font-size: 1.35em; }
+
+    .brand-lockup { display: inline-flex; align-items: center; gap: 14px; margin-bottom: clamp(48px, 8vh, 92px); }
+    .brand-mark {
+      display: grid;
+      place-items: center;
+      width: 58px;
+      height: 58px;
+      border-radius: 50% 50% 12px 12px;
+      color: var(--cream);
+      background: var(--terracotta);
+      font-family: Georgia, serif;
+      font-size: 1.8rem;
+      font-weight: 700;
+      box-shadow: var(--shadow);
+    }
+    .brand-name { font-family: Georgia, serif; font-size: 1.7rem; letter-spacing: -.02em; }
+    .cover-copy { max-width: 1050px; }
+    .cover-tagline { max-width: 710px; margin-bottom: 46px; color: var(--muted); font-size: clamp(1.25rem, 2vw, 1.8rem); }
+    .cover-meta { display: flex; gap: 46px; color: var(--muted); font-size: .82rem; }
+    .cover-meta strong { display: block; margin-bottom: 4px; color: var(--ink); font-size: .92rem; }
+    .cover-shape {
+      position: absolute;
+      right: 5vw;
+      bottom: 0;
+      width: clamp(180px, 27vw, 430px);
+      height: 57vh;
+      border: 2px solid var(--terracotta);
+      border-bottom: 0;
+      border-radius: 50% 50% 0 0;
+      opacity: .14;
+      z-index: -1;
+    }
+
+    .pain-row { margin-top: clamp(34px, 5vw, 66px); }
+    .pain-row .card { min-height: 190px; }
+
+    .timeline { position: relative; padding-left: 38px; }
+    .timeline::before { content: ""; position: absolute; top: 8px; bottom: 8px; left: 11px; width: 2px; background: var(--terracotta-soft); }
+    .timeline-item { position: relative; margin-bottom: 30px; }
+    .timeline-item:last-child { margin-bottom: 0; }
+    .timeline-item::before { content: ""; position: absolute; left: -34px; top: 4px; width: 14px; height: 14px; border: 4px solid var(--cream); border-radius: 50%; background: var(--terracotta); box-shadow: 0 0 0 1px var(--terracotta); }
+    .promise {
+      padding: clamp(32px, 4vw, 58px);
+      border-radius: 50% 50% 22px 22px;
+      color: var(--cream);
+      background: var(--terracotta);
+      box-shadow: var(--shadow);
+    }
+    .promise .big { margin: 0; font-family: Georgia, serif; font-size: clamp(2rem, 4.3vw, 4.8rem); line-height: 1; letter-spacing: -.04em; }
+
+    .steps { counter-reset: steps; align-items: stretch; }
+    .step { position: relative; padding: clamp(26px, 3vw, 44px); border-top: 4px solid var(--terracotta); background: var(--paper); box-shadow: var(--shadow); }
+    .step::after { content: "→"; position: absolute; top: 50%; right: -1.15em; color: var(--terracotta); font-size: 1.5rem; transform: translateY(-50%); z-index: 2; }
+    .step:last-child::after { display: none; }
+    .step-label { margin-bottom: 36px; color: var(--terracotta); font-size: .72rem; font-weight: 850; letter-spacing: .14em; text-transform: uppercase; }
+    .step h3 { font-family: Georgia, serif; font-size: clamp(1.6rem, 2.6vw, 2.6rem); font-weight: 500; }
+
+    .product-shell { overflow: hidden; border: 1px solid var(--line); border-radius: 24px; background: var(--paper); box-shadow: var(--shadow); }
+    .product-bar { display: flex; align-items: center; gap: 8px; padding: 16px 20px; border-bottom: 1px solid var(--line); }
+    .product-bar span { width: 9px; height: 9px; border-radius: 50%; background: var(--terracotta-soft); }
+    .product-body { padding: clamp(24px, 3vw, 40px); }
+    .score-row { display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 26px; }
+    .score { color: var(--terracotta); font-family: Georgia, serif; font-size: clamp(3.6rem, 7vw, 6.2rem); line-height: .8; }
+    .metric { display: grid; grid-template-columns: 1fr auto; gap: 8px 16px; margin: 14px 0; font-size: .78rem; }
+    .bar { grid-column: 1 / -1; height: 6px; overflow: hidden; border-radius: 10px; background: #E8DFD8; }
+    .bar i { display: block; height: 100%; border-radius: inherit; background: var(--terracotta); }
+    .dimension { padding: 15px 10px; text-align: center; border: 1px solid var(--line); border-radius: 12px; background: var(--paper); font-size: .66rem; font-weight: 750; }
+    .dimension b { display: block; margin-bottom: 8px; color: var(--terracotta); font-family: Georgia, serif; font-size: 1.4rem; }
+
+    .market-card { min-height: 250px; display: flex; flex-direction: column; justify-content: space-between; }
+    .market-label { color: var(--terracotta); font-size: .72rem; font-weight: 850; letter-spacing: .14em; text-transform: uppercase; }
+    .market-value { margin: 20px 0; font-family: Georgia, serif; font-size: clamp(2rem, 3.5vw, 3.7rem); line-height: 1; }
+    .market-note { margin: 0; color: var(--muted); font-size: .78rem; }
+
+    .pricing-card { position: relative; min-height: 320px; }
+    .pricing-card.featured { color: var(--cream); border-color: var(--terracotta); background: var(--terracotta); transform: translateY(-12px); box-shadow: var(--shadow); }
+    .pricing-card.featured .muted { color: rgba(250,247,242,.75); }
+    .tier { margin-bottom: 32px; font-size: .72rem; font-weight: 850; letter-spacing: .15em; text-transform: uppercase; }
+    .price { margin-bottom: 22px; font-family: Georgia, serif; font-size: clamp(2.2rem, 4vw, 4rem); line-height: 1; }
+    .price small { font-family: inherit; font-size: .36em; }
+    .badge { display: inline-block; padding: 7px 10px; border-radius: 999px; color: var(--terracotta-dark); background: #F4D9CF; font-size: .62rem; font-weight: 850; letter-spacing: .08em; text-transform: uppercase; }
+
+    .traction-grid { align-items: stretch; }
+    .traction-grid .card { min-height: 245px; }
+    .traction-grid .card:first-child { grid-column: span 2; }
+    .traction-number { margin: 0 0 16px; color: #FFD4C3; font-family: Georgia, serif; font-size: clamp(4rem, 8vw, 8rem); line-height: .72; }
+    .signal { display: flex; gap: 12px; align-items: center; margin-top: 30px; color: rgba(250,247,242,.8); font-size: .78rem; }
+    .signal::before { content: ""; width: 42px; height: 2px; background: #FFD4C3; }
+
+    .now-list { display: grid; gap: 18px; }
+    .now-item { display: grid; grid-template-columns: 58px 1fr; gap: 22px; align-items: start; padding: 22px 0; border-bottom: 1px solid var(--line); }
+    .now-item:last-child { border-bottom: 0; }
+    .now-num { color: var(--terracotta); font-family: Georgia, serif; font-size: 2rem; line-height: 1; }
+
+    table { width: 100%; border-collapse: separate; border-spacing: 0; overflow: hidden; border: 1px solid var(--line); border-radius: 18px; background: var(--paper); font-size: clamp(.68rem, 1vw, .92rem); }
+    th, td { padding: clamp(12px, 1.5vw, 21px); border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); text-align: center; }
+    th:first-child, td:first-child { text-align: left; }
+    th:last-child, td:last-child { border-right: 0; }
+    tr:last-child td { border-bottom: 0; }
+    thead th { color: var(--muted); background: #F4EEE9; font-size: .7rem; letter-spacing: .08em; text-transform: uppercase; }
+    th.veranda { color: var(--cream); background: var(--terracotta); }
+    td.veranda { color: var(--terracotta-dark); background: #F9E9E2; font-weight: 850; }
+    .yes { color: var(--sage); font-weight: 900; }
+    .no { color: #B9ABA2; }
+
+    .portrait {
+      display: grid;
+      place-items: center;
+      width: min(31vw, 390px);
+      aspect-ratio: .84;
+      margin: auto;
+      border-radius: 50% 50% 20px 20px;
+      color: var(--cream);
+      background: var(--terracotta);
+      box-shadow: var(--shadow);
+    }
+    .portrait span { font-family: Georgia, serif; font-size: clamp(4rem, 9vw, 8rem); }
+    .team-name { margin-bottom: 10px; font-family: Georgia, serif; font-size: clamp(2rem, 3.5vw, 3.8rem); line-height: 1; }
+    .team-role { margin-bottom: 30px; color: var(--terracotta); font-weight: 800; }
+    .founder-fit { padding-left: 20px; border-left: 4px solid var(--terracotta); }
+
+    .ask-grid { margin-top: 10px; }
+    .ask-grid .card { min-height: 210px; }
+    .ask-grid h3 { color: #FFD4C3; font-family: Georgia, serif; font-size: 1.45rem; font-weight: 500; }
+    .destination { display: flex; gap: 24px; align-items: center; margin-top: clamp(28px, 4vw, 52px); padding-top: 28px; border-top: 1px solid rgba(250,247,242,.22); }
+    .destination strong { flex: 0 0 auto; color: #FFD4C3; font-size: .72rem; letter-spacing: .15em; text-transform: uppercase; }
+    .destination p { margin: 0; font-family: Georgia, serif; font-size: clamp(1.2rem, 2vw, 1.8rem); }
+
+    .nav-dots {
+      position: fixed;
+      top: 50%;
+      right: 18px;
+      z-index: 50;
+      display: flex;
+      flex-direction: column;
+      gap: 7px;
+      transform: translateY(-50%);
+      padding: 10px 8px;
+      border: 1px solid rgba(36,28,24,.1);
+      border-radius: 999px;
+      background: rgba(250,247,242,.8);
+      backdrop-filter: blur(8px);
+      box-shadow: 0 8px 24px rgba(36,28,24,.08);
+    }
+    .nav-dots a { display: block; width: 7px; height: 7px; border-radius: 50%; background: #B9AAA1; transition: transform .2s, background .2s; }
+    .nav-dots a:hover, .nav-dots a:focus { outline: none; background: var(--terracotta); transform: scale(1.55); }
+    .slide-nav { position: absolute; right: clamp(70px, 8vw, 130px); bottom: clamp(18px, 2.6vw, 40px); display: flex; gap: 8px; }
+    .slide-nav a { display: grid; place-items: center; width: 34px; height: 34px; border: 1px solid var(--line); border-radius: 50%; text-decoration: none; background: rgba(255,253,252,.7); }
+    .dark .slide-nav a { border-color: rgba(250,247,242,.25); background: rgba(250,247,242,.08); }
+    .slide-nav a:hover, .slide-nav a:focus { outline: 2px solid var(--terracotta-soft); outline-offset: 2px; }
+
+    @media (max-width: 800px) {
+      html { scroll-snap-type: y proximity; }
+      .slide { min-height: 100svh; height: auto; padding: 56px 28px 78px; }
+      .grid-2, .grid-3 { grid-template-columns: 1fr; }
+      .grid-5 { grid-template-columns: repeat(2, 1fr); }
+      .pain-row .card, .traction-grid .card, .ask-grid .card { min-height: auto; }
+      .traction-grid .card:first-child { grid-column: auto; }
+      .pricing-card.featured { transform: none; }
+      .cover-shape { opacity: .08; }
+      .portrait { width: 230px; }
+      .nav-dots { top: auto; right: 50%; bottom: 8px; flex-direction: row; transform: translateX(50%); }
+      .step::after { display: none; }
+      table { font-size: .62rem; }
+      th, td { padding: 10px 7px; }
+      .slide-nav { display: none; }
+    }
+
+    @media print {
+      @page { size: 13.333in 7.5in; margin: 0; }
+      html, body { width: 13.333in; margin: 0; background: var(--cream); scroll-snap-type: none; }
+      body { font-size: 14px; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+      .deck { width: 13.333in; }
+      .slide {
+        width: 13.333in;
+        height: 7.5in;
+        min-height: 7.5in;
+        padding: .58in .82in .55in;
+        break-after: page;
+        page-break-after: always;
+        overflow: hidden;
+      }
+      .slide:last-child { break-after: auto; page-break-after: auto; }
+      .nav-dots, .slide-nav { display: none !important; }
+      .slide-no { right: .4in; bottom: .28in; }
+      .domain { left: .4in; bottom: .28in; }
+      h1 { font-size: 86px; }
+      h2 { font-size: 48px; margin-bottom: 28px; }
+      .lead { font-size: 17px; }
+      .card { padding: 22px; }
+      .pain-row { margin-top: 34px; }
+      .pain-row .card { min-height: 155px; }
+      .traction-grid .card { min-height: 190px; }
+      .market-card { min-height: 205px; }
+      .pricing-card { min-height: 255px; }
+      .ask-grid .card { min-height: 165px; }
+      .brand-lockup { margin-bottom: 52px; }
+    }
+  </style>
+</head>
+<body>
+  <nav class="nav-dots" aria-label="Slide navigation">
+    <a href="#slide-1" aria-label="Slide 1: Cover"></a><a href="#slide-2" aria-label="Slide 2: Problem"></a><a href="#slide-3" aria-label="Slide 3: Solution"></a><a href="#slide-4" aria-label="Slide 4: How it works"></a><a href="#slide-5" aria-label="Slide 5: Product"></a><a href="#slide-6" aria-label="Slide 6: Market"></a><a href="#slide-7" aria-label="Slide 7: Business model"></a><a href="#slide-8" aria-label="Slide 8: Traction"></a><a href="#slide-9" aria-label="Slide 9: Why now"></a><a href="#slide-10" aria-label="Slide 10: Competition"></a><a href="#slide-11" aria-label="Slide 11: Team"></a><a href="#slide-12" aria-label="Slide 12: The ask"></a>
+  </nav>
+
+  <main class="deck">
+    <section class="slide" id="slide-1" aria-labelledby="title-1">
+      <div class="cover-shape" aria-hidden="true"></div>
+      <div class="brand-lockup"><div class="brand-mark">V</div><div class="brand-name">Veranda</div></div>
+      <div class="cover-copy">
+        <p class="eyebrow">Accelerator pitch · September 2026</p>
+        <h1 id="title-1">Know before<br>you sign.</h1>
+        <p class="cover-tagline">AI-powered property verification and settlement for Nigerian renters.</p>
+        <div class="cover-meta">
+          <div><strong>Abayomi Oshinowo</strong>Founder</div>
+          <div><strong>yourveranda.com</strong>Search · Verify · Settle</div>
+        </div>
+      </div>
+      <span class="domain">YOURVERANDA.COM</span><span class="slide-no">01 / 12</span>
+      <div class="slide-nav"><a href="#slide-2" aria-label="Next slide">↓</a></div>
+    </section>
+
+    <section class="slide" id="slide-2" aria-labelledby="title-2">
+      <p class="eyebrow">The problem</p>
+      <h2 id="title-2" class="quote"><span class="quote-mark">“</span>It sucks that renters pay multiple agent fees upfront — yet still have no way to know if a home will hold up until it is too late to walk away.</h2>
+      <div class="grid-3 pain-row">
+        <article class="card"><div class="icon">₦</div><h3>Pay before certainty</h3><p class="muted">Agent fees and inspection costs stack up before a renter has trustworthy information.</p></article>
+        <article class="card"><div class="icon">?</div><h3>Hidden risks stay hidden</h3><p class="muted">Flooding, security, power and connectivity rarely appear in a listing.</p></article>
+        <article class="card"><div class="icon">!</div><h3>Regret arrives after signing</h3><p class="muted">Once money changes hands and the move begins, the renter has little leverage left.</p></article>
+      </div>
+      <span class="domain">VERANDA · THE PROBLEM</span><span class="slide-no">02 / 12</span>
+      <div class="slide-nav"><a href="#slide-1" aria-label="Previous slide">↑</a><a href="#slide-3" aria-label="Next slide">↓</a></div>
+    </section>
+
+    <section class="slide" id="slide-3" aria-labelledby="title-3">
+      <div class="grid-2">
+        <div>
+          <p class="eyebrow">The solution</p>
+          <h2 id="title-3">Confidence before the lease. Support after the move.</h2>
+          <div class="timeline">
+            <div class="timeline-item"><h3>Verify before you sign</h3><p class="muted">Property and neighbourhood intelligence turns unknowns into an evidence-led decision.</p></div>
+            <div class="timeline-item"><h3>Settle after you move</h3><p class="muted">Veranda stays useful beyond the transaction, helping renters navigate their new neighbourhood.</p></div>
+          </div>
+        </div>
+        <aside class="promise">
+          <p class="eyebrow">Our promise</p>
+          <p class="big">From house-hunting uncertainty to feeling at home.</p>
+        </aside>
+      </div>
+      <span class="domain">VERANDA · THE SOLUTION</span><span class="slide-no">03 / 12</span>
+      <div class="slide-nav"><a href="#slide-2" aria-label="Previous slide">↑</a><a href="#slide-4" aria-label="Next slide">↓</a></div>
+    </section>
+
+    <section class="slide" id="slide-4" aria-labelledby="title-4">
+      <p class="eyebrow">How it works</p>
+      <h2 id="title-4">One journey. Three simple steps.</h2>
+      <div class="grid-3 steps">
+        <article class="card step"><p class="step-label">01 · Search</p><h3>Start with the home</h3><p class="muted">Enter an address or explore by location, budget and housing needs.</p></article>
+        <article class="card step"><p class="step-label">02 · Verify</p><h3>See what listings miss</h3><p class="muted">Get a clear report across property, neighbourhood and fraud-risk signals.</p></article>
+        <article class="card step"><p class="step-label">03 · Settle</p><h3>Move with a guide</h3><p class="muted">Get practical support for the new neighbourhood after the lease is signed.</p></article>
+      </div>
+      <span class="domain">SEARCH → VERIFY → SETTLE</span><span class="slide-no">04 / 12</span>
+      <div class="slide-nav"><a href="#slide-3" aria-label="Previous slide">↑</a><a href="#slide-5" aria-label="Next slide">↓</a></div>
+    </section>
+
+    <section class="slide" id="slide-5" aria-labelledby="title-5">
+      <div class="grid-2">
+        <div>
+          <p class="eyebrow">The product</p>
+          <h2 id="title-5">A decision layer for every address.</h2>
+          <p class="lead">Veranda turns fragmented neighbourhood signals into one understandable verification report — before commitment.</p>
+          <div class="grid-5" aria-label="Five verification dimensions">
+            <div class="dimension"><b>≈</b>Flood</div><div class="dimension"><b>⌂</b>Security</div><div class="dimension"><b>ϟ</b>Power</div><div class="dimension"><b>⌁</b>Network</div><div class="dimension"><b>✓</b>Fraud</div>
+          </div>
+        </div>
+        <div class="product-shell" role="img" aria-label="Illustrative Veranda property verification report interface">
+          <div class="product-bar"><span></span><span></span><span></span></div>
+          <div class="product-body">
+            <p class="eyebrow">Property report · Surulere, Lagos</p>
+            <div class="score-row"><div><strong>Veranda confidence</strong><p class="muted">Good fit · 4 checks passed</p></div><div class="score">82</div></div>
+            <div class="metric"><span>Flood resilience</span><strong>High</strong><div class="bar"><i style="width:88%"></i></div></div>
+            <div class="metric"><span>Power reliability</span><strong>Moderate</strong><div class="bar"><i style="width:64%"></i></div></div>
+            <div class="metric"><span>Security conditions</span><strong>Good</strong><div class="bar"><i style="width:78%"></i></div></div>
+            <div class="metric"><span>Network / ISP coverage</span><strong>Strong</strong><div class="bar"><i style="width:92%"></i></div></div>
+          </div>
+        </div>
+      </div>
+      <span class="domain">ILLUSTRATIVE PRODUCT VIEW</span><span class="slide-no">05 / 12</span>
+      <div class="slide-nav"><a href="#slide-4" aria-label="Previous slide">↑</a><a href="#slide-6" aria-label="Next slide">↓</a></div>
+    </section>
+
+    <section class="slide" id="slide-6" aria-labelledby="title-6">
+      <p class="eyebrow">Market opportunity</p>
+      <h2 id="title-6">A massive market paying for access — but not yet protected by verification.</h2>
+      <div class="grid-3">
+        <article class="card market-card"><p class="market-label">TAM · Nigerian rental market</p><div class="market-value"><span class="placeholder">[INSERT MARKET SIZE]</span></div><p class="market-note">Annual value of Nigeria’s residential rental market, with source and year.</p></article>
+        <article class="card market-card"><p class="market-label">SAM · Lagos renters</p><div class="market-value"><span class="placeholder">[INSERT # RENTERS]</span></div><p class="market-note">Renting households or active renters in Lagos, with source and year.</p></article>
+        <article class="card market-card"><p class="market-label">SOM · Veranda wedge</p><div class="market-value"><span class="placeholder">[INSERT TAM / SOM]</span></div><p class="market-note">Initial reachable market and assumptions: geography × target users × annual revenue.</p></article>
+      </div>
+      <p class="muted" style="margin-top:20px;font-size:.72rem"><span class="placeholder">[INSERT SOURCES + YEAR]</span> Replace every highlighted field with sourced figures before submission.</p>
+      <span class="domain">VERANDA · MARKET OPPORTUNITY</span><span class="slide-no">06 / 12</span>
+      <div class="slide-nav"><a href="#slide-5" aria-label="Previous slide">↑</a><a href="#slide-7" aria-label="Next slide">↓</a></div>
+    </section>
+
+    <section class="slide" id="slide-7" aria-labelledby="title-7">
+      <p class="eyebrow">Business model</p>
+      <h2 id="title-7">Show value first. Monetise trust over time.</h2>
+      <div class="grid-3">
+        <article class="card pricing-card"><p class="tier">Discover · Free</p><p class="price">5 reports</p><p class="muted">Email capture unlocks the first five verification reports — enough to experience the value.</p><span class="badge">Acquisition</span></article>
+        <article class="card pricing-card featured"><p class="tier">Veranda Plus</p><p class="price">₦7,000<small> / month</small></p><p class="muted">Unlimited reports for active house-hunters comparing multiple homes and neighbourhoods.</p><span class="badge">Core revenue</span></article>
+        <article class="card pricing-card"><p class="tier">Concierge · Roadmap</p><p class="price">~₦155k<small> / lifecycle</small></p><p class="muted">A done-for-you service spanning search, verification, negotiation support and settlement.</p><span class="badge">~$100 premium tier</span></article>
+      </div>
+      <span class="domain">LAND WITH VERIFICATION · EXPAND THROUGH SETTLEMENT</span><span class="slide-no">07 / 12</span>
+      <div class="slide-nav"><a href="#slide-6" aria-label="Previous slide">↑</a><a href="#slide-8" aria-label="Next slide">↓</a></div>
+    </section>
+
+    <section class="slide dark" id="slide-8" aria-labelledby="title-8">
+      <p class="eyebrow">Early traction</p>
+      <h2 id="title-8">Real people are testing. One has already paid.</h2>
+      <div class="grid-3 traction-grid">
+        <article class="card"><p class="traction-number">18</p><h3>contacts / early users</h3><p class="muted">Built through founder relationships and direct outreach.</p></article>
+        <article class="card"><p class="traction-number">17</p><h3>people tried the product</h3><p class="muted">Evidence of interest before scaled acquisition.</p></article>
+        <article class="card"><p class="traction-number">1st</p><h3>paying customer acquired</h3><p class="muted">The first signal that trust can convert into revenue.</p></article>
+      </div>
+      <div class="signal">Relationship-driven growth today. A repeatable acquisition and activation engine next.</div>
+      <span class="domain">EARLY, HUMAN, REVENUE-BEARING SIGNALS</span><span class="slide-no">08 / 12</span>
+      <div class="slide-nav"><a href="#slide-7" aria-label="Previous slide">↑</a><a href="#slide-9" aria-label="Next slide">↓</a></div>
+    </section>
+
+    <section class="slide" id="slide-9" aria-labelledby="title-9">
+      <div class="grid-2">
+        <div>
+          <p class="eyebrow">Why now</p>
+          <h2 id="title-9">Three shifts make property truth scalable.</h2>
+          <p class="lead">The market is moving from access alone to accountability across the renting journey.</p>
+        </div>
+        <div class="now-list">
+          <div class="now-item"><div class="now-num">01</div><div><h3>Nigeria’s proptech behaviour is forming</h3><p class="muted">Renters increasingly begin discovery and decisions through digital channels.</p></div></div>
+          <div class="now-item"><div class="now-num">02</div><div><h3>Renters are demanding proof</h3><p class="muted">High upfront costs and repeated misrepresentation make accountability urgent, not optional.</p></div></div>
+          <div class="now-item"><div class="now-num">03</div><div><h3>AI changes the cost curve</h3><p class="muted">Messy, fragmented signals can now be synthesised into useful intelligence at scale.</p></div></div>
+        </div>
+      </div>
+      <span class="domain">VERANDA · WHY NOW</span><span class="slide-no">09 / 12</span>
+      <div class="slide-nav"><a href="#slide-8" aria-label="Previous slide">↑</a><a href="#slide-10" aria-label="Next slide">↓</a></div>
+    </section>
+
+    <section class="slide" id="slide-10" aria-labelledby="title-10">
+      <p class="eyebrow">Competition</p>
+      <h2 id="title-10">Others help renters find a listing. Veranda helps them make the move.</h2>
+      <table aria-label="Competitive positioning comparison">
+        <thead><tr><th>Capability</th><th>Listing platforms</th><th>Traditional agents</th><th class="veranda">Veranda</th></tr></thead>
+        <tbody>
+          <tr><td>Discover properties</td><td class="yes">●</td><td class="yes">●</td><td class="veranda">●</td></tr>
+          <tr><td>Independent risk intelligence</td><td class="no">—</td><td class="no">—</td><td class="veranda">●</td></tr>
+          <tr><td>Neighbourhood conditions</td><td class="no">Limited</td><td class="no">Inconsistent</td><td class="veranda">●</td></tr>
+          <tr><td>Fraud-signal screening</td><td class="no">Limited</td><td class="no">—</td><td class="veranda">●</td></tr>
+          <tr><td>Post-lease settlement support</td><td class="no">—</td><td class="no">—</td><td class="veranda">●</td></tr>
+        </tbody>
+      </table>
+      <p class="lead" style="margin-top:26px"><strong class="accent">Our wedge:</strong> intelligence before commitment. <strong class="accent">Our moat:</strong> completing the renter lifecycle from search to settled.</p>
+      <span class="domain">LISTINGS END AT THE TRANSACTION · VERANDA CONTINUES</span><span class="slide-no">10 / 12</span>
+      <div class="slide-nav"><a href="#slide-9" aria-label="Previous slide">↑</a><a href="#slide-11" aria-label="Next slide">↓</a></div>
+    </section>
+
+    <section class="slide" id="slide-11" aria-labelledby="title-11">
+      <div class="grid-2">
+        <div class="portrait" aria-label="Founder portrait placeholder"><span>AO</span></div>
+        <div>
+          <p class="eyebrow">Team</p>
+          <h2 id="title-11" style="margin-bottom:28px">Built from lived experience.</h2>
+          <p class="team-name">Abayomi Oshinowo</p>
+          <p class="team-role">Founder, Veranda</p>
+          <p class="founder-fit">Abayomi experienced the problem firsthand: paying multiple agents, travelling to mismatched properties and discovering critical risks only after moving in.</p>
+          <span class="placeholder block">[INSERT: 2–3 LINE PROFESSIONAL BIO — RELEVANT EXPERIENCE, EXPERTISE, AND WHY ABAYOMI IS UNIQUELY EQUIPPED TO BUILD VERANDA]</span>
+          <span class="placeholder block">[INSERT: CO-FOUNDER(S), ADVISERS OR KEY HIRES — IF APPLICABLE]</span>
+        </div>
+      </div>
+      <span class="domain">FOUNDER–PROBLEM FIT FROM DAY ONE</span><span class="slide-no">11 / 12</span>
+      <div class="slide-nav"><a href="#slide-10" aria-label="Previous slide">↑</a><a href="#slide-12" aria-label="Next slide">↓</a></div>
+    </section>
+
+    <section class="slide dark" id="slide-12" aria-labelledby="title-12">
+      <p class="eyebrow">The ask</p>
+      <h2 id="title-12">Help us turn renter uncertainty into infrastructure for trust.</h2>
+      <div class="grid-3 ask-grid">
+        <article class="card"><div class="icon">↗</div><h3>Go-to-market</h3><p class="muted">Mentorship to turn founder-led outreach into repeatable acquisition, activation and retention.</p></article>
+        <article class="card"><div class="icon">◎</div><h3>Data partnerships</h3><p class="muted">Introductions across housing, infrastructure and neighbourhood data to deepen verification quality.</p></article>
+        <article class="card"><div class="icon">₦</div><h3>Capital & operating leverage</h3><p class="muted">Support to validate pricing, strengthen the product and operationalise the concierge layer.</p></article>
+      </div>
+      <div class="destination"><strong>12-month vision</strong><p>Become the trusted decision layer for Lagos renters — from first search to confident settlement.</p></div>
+      <span class="placeholder block">[INSERT: ACCELERATOR-SPECIFIC ASK, FUNDING AMOUNT OR PROGRAM OBJECTIVE]</span>
+      <span class="domain">ABAYOMI OSHINOWO · YOURVERANDA.COM</span><span class="slide-no">12 / 12</span>
+      <div class="slide-nav"><a href="#slide-11" aria-label="Previous slide">↑</a><a href="#slide-1" aria-label="Back to cover">↟</a></div>
+    </section>
+  </main>
+</body>
+</html>
