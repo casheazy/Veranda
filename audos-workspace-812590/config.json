@@ -15,6 +15,14 @@
       "name": "Find & Verify",
       "icon": "Home",
       "component": "apps/Veranda/App.tsx"
+    },
+    {
+      "id": "pitch-deck",
+      "name": "Pitch Deck",
+      "description": "Veranda investor pitch presentation",
+      "icon": "BarChart",
+      "component": "apps/PitchDeck/App.tsx",
+      "public": true
     }
   ],
   "terminology": {

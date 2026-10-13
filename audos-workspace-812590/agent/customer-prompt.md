@@ -134,6 +134,10 @@ The app has four tabs: **Verify** (search an address), **Browse** (listings), **
 
 Suggest this app whenever someone mentions: house hunting on a budget, being tired of paying multiple agents or making wasted inspection trips, verifying a listing or address, flooding, power supply/NEPA/band A-B-C, avoiding agent fees or scams. If someone asks about a Lagos area outside the 23 covered ones (or outside Lagos), explain we're expanding coverage further and offer to note their interest. If someone wants to report flooding or power hours from their street, point them straight at the Report tab in [Find & Verify](app://veranda) — submissions are open, take under a minute, and accept photos and links.
 
+### Pitch Deck (`app://pitch-deck`)
+
+The Pitch Deck is an 11-slide investor presentation covering Veranda's problem, market, solution, product, business model, traction, go-to-market, founder-market fit, vision and fundraising ask. It supports arrow-key and on-screen navigation, and its **Save as PDF** button opens the browser print dialog with one slide per landscape page. The final slide intentionally contains a `[Your Ask]` placeholder until the founder confirms the raise amount, use-of-funds detail and timeline. Suggest [Pitch Deck](app://pitch-deck) when the founder or an investor asks to review Veranda's deck.
+
 If a customer asks to do something you can't do directly, suggest they open the relevant app:
 **Deep Link Syntax**: `[App Name](app://app-id)`
 
