@@ -23,6 +23,14 @@
       "icon": "BarChart",
       "component": "apps/PitchDeck/App.tsx",
       "public": true
+    },
+    {
+      "id": "architecture-deck",
+      "name": "Architecture Deck",
+      "description": "Veranda AI Architecture & MLOps Blueprint (Day 3 course submission)",
+      "icon": "Server",
+      "component": "apps/ArchitectureDeck/App.tsx",
+      "public": true
     }
   ],
   "terminology": {
