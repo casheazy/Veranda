@@ -12,7 +12,7 @@
  *   unlocked listing per account), never from a mutable counter.
  */
 
-import { subscriptionCharge } from './types';
+import { PASS_VALID_DAYS, subscriptionCharge } from './types';
 
 export const WORKSPACE_ID = '85d8606a-de71-4f05-b2b5-23980bd71b87';
 
@@ -280,7 +280,7 @@ export async function recordUnlock(params: {
   listingTitle: string | null;
   areaKey: string | null;
   address: string | null;
-  unlockType: 'free' | 'subscription';
+  unlockType: 'free' | 'subscription' | 'pass';
 }): Promise<void> {
   const db = await getWorkspaceDb();
   await db.from('account_unlocks').insert({
@@ -290,6 +290,60 @@ export async function recordUnlock(params: {
     area_key: params.areaKey,
     address: params.address,
     unlock_type: params.unlockType,
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Veranda Pass — granted by the team after a renter pays by hand.
+//
+// STORAGE (renter_passes table, INSERT-ONLY, shared read): one row per grant
+// with the expiry date. A renter has a Pass while their newest row is not
+// revoked and expires_at is in the future. Insert-only for the same reason as
+// renter_destinations below: row updates are session-scoped.
+// ---------------------------------------------------------------------------
+
+export interface RenterPassRow {
+  id: number;
+  account_email: string;
+  expires_at: string;
+  note?: string | null;
+  revoked?: boolean | null;
+  created_at?: string;
+}
+
+/** The renter's active Pass, or null. Never throws (no Pass = null). */
+export async function fetchActivePass(email: string): Promise<RenterPassRow | null> {
+  try {
+    const db = await getWorkspaceDb();
+    const { data } = await db
+      .from('renter_passes', { shared: true })
+      .eq('account_email', normalizeEmail(email))
+      .orderBy('id', 'desc')
+      .limit(1)
+      .get();
+    const row: RenterPassRow | undefined = data && data[0];
+    if (!row || row.revoked) return null;
+    return new Date(row.expires_at).getTime() > Date.now() ? row : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Team-only: give an email a Pass for PASS_VALID_DAYS (or end one). */
+export async function grantPass(params: {
+  email: string;
+  note?: string;
+  revoke?: boolean;
+}): Promise<void> {
+  const email = normalizeEmail(params.email);
+  if (!email || !email.includes('@')) throw new Error('Enter a valid email address.');
+  const db = await getWorkspaceDb();
+  const expires = new Date(Date.now() + PASS_VALID_DAYS * 24 * 60 * 60 * 1000);
+  await db.from('renter_passes').insert({
+    account_email: email,
+    expires_at: params.revoke ? new Date().toISOString() : expires.toISOString(),
+    note: params.note?.trim() || null,
+    revoked: params.revoke === true,
   });
 }
 

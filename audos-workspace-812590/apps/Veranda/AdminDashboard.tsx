@@ -39,11 +39,14 @@ import {
   AccountUnlock,
   RenterAccount,
   SUBSCRIPTION_PRICE_NGN,
+  PASS_NAME,
+  PASS_PRICE_NGN,
+  PASS_VALID_DAYS,
   TenantReport,
   areaName,
   mrrChargeHint,
 } from './types';
-import { WORKSPACE_ID } from './account';
+import { WORKSPACE_ID, RenterPassRow, grantPass } from './account';
 import { TRACTION_ONEPAGER_FILENAME, TRACTION_ONEPAGER_HTML } from './tractionOnepagerContent';
 
 
@@ -685,6 +688,108 @@ function TractionOnePagerCard() {
   );
 }
 
+// ---------------------------------------------------------------------------
+// Give a Veranda Pass — after a renter pays by hand (transfer / Paystack link)
+// ---------------------------------------------------------------------------
+
+function GrantPassCard() {
+  const passesHook = window.useWorkspaceDB<RenterPassRow>('renter_passes', {
+    shared: true,
+    limit: 8,
+    orderBy: { column: 'id', direction: 'desc' },
+  });
+  const [email, setEmail] = useState('');
+  const [note, setNote] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const run = async (revoke: boolean) => {
+    setBusy(true);
+    setMessage(null);
+    setError(null);
+    try {
+      await grantPass({ email, note, revoke });
+      setMessage(
+        revoke
+          ? `Pass ended for ${email.trim().toLowerCase()}.`
+          : `Pass given to ${email.trim().toLowerCase()} for ${PASS_VALID_DAYS} days. They can unlock reports now.`
+      );
+      setEmail('');
+      setNote('');
+      passesHook.refresh();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not save the Pass — try again.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className={`${tw.card.default} rounded-2xl p-4 mb-4`} data-testid="card-grant-pass">
+      <div className="flex items-center gap-2">
+        <Ticket className={`w-4 h-4 ${tw.icon.primary}`} />
+        <p className={`text-sm ${typography.weight.semibold} ${typography.color.primary}`}>Give a {PASS_NAME}</p>
+      </div>
+      <p className={`text-[11px] mt-1 ${typography.color.muted}`}>
+        After a renter pays ₦{PASS_PRICE_NGN.toLocaleString()}, enter the email they signed up with. Their reports
+        unlock for {PASS_VALID_DAYS} days.
+      </p>
+      <div className="mt-3 grid gap-2 sm:grid-cols-[1fr_1fr_auto_auto]">
+        <input
+          type="email"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          placeholder="renter@email.com"
+          className={`${tw.input.base} ${tw.input.default} text-sm rounded-xl`}
+          data-testid="input-pass-email"
+        />
+        <input
+          type="text"
+          value={note}
+          onChange={(e) => setNote(e.target.value)}
+          placeholder="Note, e.g. paid by transfer 20 Nov"
+          className={`${tw.input.base} ${tw.input.default} text-sm rounded-xl`}
+          data-testid="input-pass-note"
+        />
+        <button
+          onClick={() => run(false)}
+          disabled={busy || !email.trim()}
+          className={`px-4 py-2.5 rounded-xl text-sm flex items-center justify-center gap-1.5 ${tw.button.primary} disabled:opacity-50`}
+          data-testid="button-grant-pass"
+        >
+          {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+          Give Pass
+        </button>
+        <button
+          onClick={() => run(true)}
+          disabled={busy || !email.trim()}
+          className={`px-4 py-2.5 rounded-xl text-sm ${tw.button.secondary} disabled:opacity-50`}
+          data-testid="button-revoke-pass"
+        >
+          End Pass
+        </button>
+      </div>
+      {message && <p className={`text-xs mt-2 ${typography.color.success}`}>{message}</p>}
+      {error && <p className={`text-xs mt-2 ${typography.color.danger}`}>{error}</p>}
+      {(passesHook.data || []).length > 0 && (
+        <div className="mt-3 space-y-1">
+          <p className={`text-[11px] ${typography.weight.semibold} ${typography.color.secondary}`}>Recent</p>
+          {(passesHook.data || []).map((p) => (
+            <p key={p.id} className={`text-[11px] ${typography.color.muted}`}>
+              {p.account_email} ·{' '}
+              {p.revoked
+                ? 'ended'
+                : `until ${new Date(p.expires_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}`}
+              {p.note ? ` · ${p.note}` : ''}
+            </p>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function AdminDashboard({
   isEntrepreneur,
   onBack,
@@ -795,6 +900,8 @@ export default function AdminDashboard({
           <p className={`text-[11px] ${typography.color.muted}`}>Internal — only visible from App Studio.</p>
         </div>
       </div>
+
+      <GrantPassCard />
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <StatTile

@@ -73,6 +73,7 @@ import {
   destinationStateFromLegacy,
   ensureRenterAccount,
   fetchAccountUnlockAccess,
+  fetchActivePass,
   fetchSubscriptionStatus,
   isSubscriptionActive,
   normalizeEmail,
@@ -133,7 +134,22 @@ export default function VerandaApp() {
   // Stripe but the subscription-status endpoint hasn't caught up yet.
   const [subOverride, setSubOverride] = useState(false);
 
-  const subscribed = isSubscriptionActive(subInfo) || subOverride;
+  // Veranda Pass granted by the team (renter_passes). Counts as access.
+  const [passExpiresAt, setPassExpiresAt] = useState<string | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    setPassExpiresAt(null);
+    if (accountEmail) {
+      fetchActivePass(accountEmail).then((p) => {
+        if (!cancelled) setPassExpiresAt(p ? p.expires_at : null);
+      });
+    }
+    return () => {
+      cancelled = true;
+    };
+  }, [accountEmail]);
+
+  const subscribed = isSubscriptionActive(subInfo) || subOverride || passExpiresAt != null;
 
   const refreshSub = async (email: string | null) => {
     if (!email) {
@@ -422,7 +438,14 @@ export default function VerandaApp() {
     if (currentFreeUsed < FREE_UNLOCK_LIMIT) {
       return { currentUnlocks, unlockType: 'free' as const };
     }
-    if (subscribed) return { currentUnlocks, unlockType: 'subscription' as const };
+    // A Pass is checked fresh at click time, so a Pass granted while the
+    // renter had the page open works without a reload.
+    const pass = await fetchActivePass(accountEmail);
+    setPassExpiresAt(pass ? pass.expires_at : null);
+    if (pass) return { currentUnlocks, unlockType: 'pass' as const };
+    if (isSubscriptionActive(subInfo) || subOverride) {
+      return { currentUnlocks, unlockType: 'subscription' as const };
+    }
 
     // The UI keeps the previous status during a transient refresh failure. Do
     // one authoritative check at click time before denying a paid subscriber.
@@ -457,7 +480,7 @@ export default function VerandaApp() {
   const recordAreaUnlock = async (
     key: AreaKey,
     address: string,
-    unlockType: 'free' | 'subscription'
+    unlockType: 'free' | 'subscription' | 'pass'
   ) => {
     if (!accountEmail) throw new Error('Enter your email first.');
     await recordUnlock({
@@ -747,6 +770,7 @@ export default function VerandaApp() {
             unlocksLoading={unlocksHook.loading}
             subInfo={subInfo}
             subLoading={subLoading}
+            passExpiresAt={passExpiresAt}
             accountError={accountAccessError}
             onRetryAccount={retryAccountLoad}
             isEntrepreneur={isEntrepreneur}

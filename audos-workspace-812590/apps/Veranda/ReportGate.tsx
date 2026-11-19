@@ -281,7 +281,7 @@ export function SubscribeCard({
       </div>
       <ul className="mt-2.5 space-y-1.5">
         {[
-          'Reports on every home on your list, for your whole search',
+          'Reports on every home on your list, for 3 months of searching',
           'All five dimensions: flood, power, commute, network, security',
           'Ask the report assistant anything, on every home',
         ].map((line) => (
@@ -480,7 +480,7 @@ export default function ReportGate({
                   <UnlockIcon className={`w-5 h-5 ${tw.icon.primary}`} />
                 </div>
                 <p className={`text-sm ${typography.weight.semibold} ${typography.color.primary}`}>
-                  Included in your subscription
+                  Included in your Pass
                 </p>
                 <p className={`text-xs mt-1.5 ${typography.color.muted}`}>
                   Signed in as {accountEmail}. One click and the full report is yours.

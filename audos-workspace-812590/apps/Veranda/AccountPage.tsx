@@ -52,6 +52,8 @@ interface AccountPageProps {
   unlocksLoading: boolean;
   subInfo: SubscriptionInfo | null;
   subLoading: boolean;
+  /** Expiry of an active Veranda Pass, or null. */
+  passExpiresAt?: string | null;
   accountError?: string | null;
   onRetryAccount?: () => void;
   isEntrepreneur: boolean;
@@ -271,6 +273,7 @@ export default function AccountPage({
   unlocksLoading,
   subInfo,
   subLoading,
+  passExpiresAt,
   accountError,
   onRetryAccount,
   isEntrepreneur,
@@ -382,7 +385,9 @@ export default function AccountPage({
               <Ticket className={`w-4 h-4 ${tw.icon.primary}`} />
               <p className={`text-sm ${typography.weight.semibold} ${typography.color.primary}`}>Free reports</p>
             </div>
-            {subscribed ? (
+            {passExpiresAt ? (
+              <span className={`${tw.badge.default} ${tw.badge.success}`}>Unlimited with your Pass</span>
+            ) : subscribed ? (
               <span className={`${tw.badge.default} ${tw.badge.success}`}>Unlimited with subscription</span>
             ) : (
               <span className={`${tw.badge.default} ${tw.badge.primary}`}>
@@ -425,6 +430,10 @@ export default function AccountPage({
                   ? new Date(subInfo.currentPeriodEnd).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
                   : 'at period end'}
               </span>
+            ) : passExpiresAt ? (
+              <span className={`${tw.badge.default} ${tw.badge.success} inline-flex items-center gap-1`}>
+                <CheckCircle2 className="w-3 h-3" /> Pass active
+              </span>
             ) : subscribed ? (
               <span className={`${tw.badge.default} ${tw.badge.success} inline-flex items-center gap-1`}>
                 <CheckCircle2 className="w-3 h-3" /> Active
@@ -442,6 +451,15 @@ export default function AccountPage({
             <p className={`text-[11px] mt-2 ${typography.color.muted}`}>
               Retry your account above before starting or changing a subscription, so we can confirm
               your current access first.
+            </p>
+          ) : passExpiresAt ? (
+            <p
+              className={`text-xs mt-2 ${typography.weight.semibold} ${typography.color.primary}`}
+              data-testid="pass-active-line"
+            >
+              {PASS_NAME} active until{' '}
+              {new Date(passExpiresAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}.
+              {' '}Unlock a report on every home on your list.
             </p>
           ) : subscribed ? (
             <>

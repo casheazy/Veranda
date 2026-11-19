@@ -414,6 +414,8 @@ export const UNLOCK_PRICE_USD_CENTS = 720;
 export const PASS_NAME = 'Veranda Pass';
 export const PASS_PRICE_NGN = 20000;
 export const PASS_CONTACT_EMAIL = 'hello@yourveranda.com';
+/** How long a granted Pass unlocks reports (one move's search). */
+export const PASS_VALID_DAYS = 90;
 
 /** mailto: link a renter uses to request a Pass. */
 export function passRequestHref(accountEmail?: string, home?: string): string {
