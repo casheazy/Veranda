@@ -15,22 +15,6 @@
       "name": "Find & Verify",
       "icon": "Home",
       "component": "apps/Veranda/App.tsx"
-    },
-    {
-      "id": "pitch-deck",
-      "name": "Pitch Deck",
-      "description": "Veranda investor pitch presentation",
-      "icon": "BarChart",
-      "component": "apps/PitchDeck/App.tsx",
-      "public": true
-    },
-    {
-      "id": "architecture-deck",
-      "name": "Architecture Deck",
-      "description": "Veranda AI Architecture & MLOps Blueprint (Day 3 course submission)",
-      "icon": "Server",
-      "component": "apps/ArchitectureDeck/App.tsx",
-      "public": true
     }
   ],
   "terminology": {
