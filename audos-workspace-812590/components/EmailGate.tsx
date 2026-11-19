@@ -1504,7 +1504,7 @@ export default function EmailGate({
       </div>
 
       <p className="mt-6 text-xs font-medium sm:text-sm" style={{ color: 'rgba(255,255,255,0.68)' }}>
-        Free to browse listings · 5 free full reports on us · then ₦7,000/month, cancel anytime — less than one agent fee · Live in 23 Lagos areas
+        Free to browse listings · 5 free full reports on us · then a ₦20,000 Pass, once per move — less than paying two agents · Live in 23 Lagos areas
       </p>
     </div>
   </section>
@@ -1665,13 +1665,13 @@ export default function EmailGate({
           <span className="absolute -top-3 left-6 rounded-full px-3 py-1 text-[10px] font-extrabold uppercase tracking-wider" style={{ backgroundColor: primaryColor, color: readableTextColor(primaryColor) }}>
             The whole truth
           </span>
-          <p className="text-xs font-extrabold uppercase tracking-wider" style={{ color: 'rgba(255,255,255,0.55)' }}>Veranda Monthly</p>
+          <p className="text-xs font-extrabold uppercase tracking-wider" style={{ color: 'rgba(255,255,255,0.55)' }}>Veranda Pass</p>
           <p className="mt-3 text-4xl font-extrabold tracking-tight" style={{ color: '#ffffff', fontFamily: headingFontStack }}>
-            ₦7,000<span className="text-base font-semibold" style={{ color: 'rgba(255,255,255,0.55)' }}> / month</span>
+            ₦20,000<span className="text-base font-semibold" style={{ color: 'rgba(255,255,255,0.55)' }}> once per move</span>
           </p>
-          <p className="mt-2 text-sm" style={{ color: 'rgba(255,255,255,0.7)' }}>Cancel anytime. Unlimited verification report unlocks.</p>
+          <p className="mt-2 text-sm" style={{ color: 'rgba(255,255,255,0.7)' }}>One fee for your whole search. Less than paying two agents.</p>
           <ul className="mt-6 flex-1 space-y-3">
-            {['Unlimited full verification reports', 'Flood zone verification', 'DisCo power band & supply reality', 'Network coverage on the street', 'Security situation in the area', 'Distance & commute to your work'].map((line) => (
+            {['Reports on every home on your list', 'Flood zone verification', 'DisCo power band & supply reality', 'Network coverage on the street', 'Security situation in the area', 'Distance & commute to your work'].map((line) => (
               <li key={line} className="flex items-start gap-2.5 text-sm" style={{ color: 'rgba(255,255,255,0.85)' }}>
                 <Check size={16} strokeWidth={3} className="mt-0.5 shrink-0" style={{ color: palette?.highlightScale?.['200'] || highlightColor }} />
                 {line}
@@ -1679,7 +1679,7 @@ export default function EmailGate({
             ))}
           </ul>
           <button onClick={openLogin} className="mt-8 w-full rounded-full py-3.5 text-sm font-bold transition-transform hover:scale-[1.02]" style={{ backgroundColor: primaryColor, color: readableTextColor(primaryColor), boxShadow: `0 12px 30px ${colorWithAlpha(primaryColor, 0.4)}` }}>
-            Subscribe for ₦7,000/month
+            Get my Pass
           </button>
         </div>
       </div>

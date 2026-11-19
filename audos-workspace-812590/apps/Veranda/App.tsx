@@ -50,6 +50,7 @@ import {
   Listing,
   RenterAccount,
   SUBSCRIPTION_PRICE_NGN,
+  PASS_PRICE_NGN,
   TenantReport,
   areaName,
   budgetAnnualLabel,
@@ -441,7 +442,7 @@ export default function VerandaApp() {
       unlocksHook.refresh();
       return;
     }
-    if (!unlockType) throw new Error('No free reports left — subscribe to keep unlocking.');
+    if (!unlockType) throw new Error('No free reports left — get a Veranda Pass to keep unlocking.');
     await recordUnlock({
       email: accountEmail,
       listingId: listing.id,
@@ -485,7 +486,7 @@ export default function VerandaApp() {
       unlocksHook.refresh();
       return;
     }
-    if (!unlockType) throw new Error('No free reports left — subscribe to keep unlocking.');
+    if (!unlockType) throw new Error('No free reports left — get a Veranda Pass to keep unlocking.');
     await recordAreaUnlock(areaReport.areaKey, areaReport.address, unlockType);
   };
 
@@ -972,8 +973,8 @@ function LandingView({
             },
             {
               icon: Wallet,
-              title: 'Then one simple plan',
-              body: `₦${SUBSCRIPTION_PRICE_NGN.toLocaleString()}/month for unlimited reports. Cancel anytime.`,
+              title: 'Then one Pass per move',
+              body: `₦${PASS_PRICE_NGN.toLocaleString()} once, for every home on your list. Less than paying two agents.`,
             },
           ].map(({ icon: Icon, title, body }) => (
             <div key={title} className="flex sm:block items-start gap-3">

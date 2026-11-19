@@ -38,6 +38,10 @@ import {
   FREE_UNLOCK_LIMIT,
   SUBSCRIPTION_PLAN_NAME,
   SUBSCRIPTION_PRICE_NGN,
+  PASS_NAME,
+  PASS_PRICE_NGN,
+  PASS_CONTACT_EMAIL,
+  passRequestHref,
   areaName,
   subscriptionCharge,
 } from './types';
@@ -243,29 +247,9 @@ export function SubscribeCard({
   address?: string;
   compact?: boolean;
 }) {
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const charge = subscriptionCharge();
-
-  const subscribe = async () => {
-    setBusy(true);
-    setError(null);
-    try {
-      if (areaKey && address) {
-        savePendingUnlock({
-          kind: listing?.id != null ? 'listing' : 'area',
-          listingId: listing?.id ?? null,
-          areaKey,
-          address,
-          title: listing?.title || address,
-        });
-      }
-      const url = await startSubscriptionCheckout(email);
-      redirectTo(url);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Could not start checkout — please try again.');
-      setBusy(false);
-    }
+  // Pass requests go to the team by email; payment is taken by hand for now.
+  const requestPass = () => {
+    window.location.href = passRequestHref(email, listing?.title || address);
   };
 
   return (
@@ -287,19 +271,19 @@ export function SubscribeCard({
         </>
       )}
       <p className={`text-[11px] uppercase tracking-wide ${typography.weight.semibold} ${typography.color.brand}`} data-testid="subscribe-plan-name">
-        {SUBSCRIPTION_PLAN_NAME}
+        {PASS_NAME}
       </p>
       <div className="flex items-baseline gap-1.5 mt-0.5">
         <p className={`text-2xl ${typography.weight.bold} ${typography.color.brand}`}>
-          ₦{SUBSCRIPTION_PRICE_NGN.toLocaleString()}
+          ₦{PASS_PRICE_NGN.toLocaleString()}
         </p>
-        <p className={`text-xs ${typography.color.muted}`}>/month · cancel anytime</p>
+        <p className={`text-xs ${typography.color.muted}`}>once per move · less than paying two agents</p>
       </div>
       <ul className="mt-2.5 space-y-1.5">
         {[
-          'Unlimited verification reports — one click, no counter',
+          'Reports on every home on your list, for your whole search',
           'All five dimensions: flood, power, commute, network, security',
-          'Ask the report assistant anything, on every unlocked home',
+          'Ask the report assistant anything, on every home',
         ].map((line) => (
           <li key={line} className={`flex items-start gap-2 text-xs ${typography.color.secondary}`}>
             <CheckCircle2 className={`w-3.5 h-3.5 mt-0.5 shrink-0 ${tw.icon.success}`} />
@@ -308,19 +292,16 @@ export function SubscribeCard({
         ))}
       </ul>
       <button
-        onClick={subscribe}
-        disabled={busy}
-        className={`mt-4 w-full py-3 rounded-xl text-sm flex items-center justify-center gap-2 ${tw.button.primary} disabled:opacity-50`}
+        onClick={requestPass}
+        className={`mt-4 w-full py-3 rounded-xl text-sm flex items-center justify-center gap-2 ${tw.button.primary}`}
         data-testid="button-subscribe"
       >
-        {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <CreditCard className="w-4 h-4" />}
-        Subscribe for ₦{SUBSCRIPTION_PRICE_NGN.toLocaleString()}/month
+        <CreditCard className="w-4 h-4" />
+        Get my Pass
       </button>
       <p className={`text-[10px] mt-2 text-center ${typography.color.muted}`}>
-        Secure Stripe card checkout — {charge.note}.
-        {areaKey && address ? ' You\u2019ll come straight back to this report.' : ''}
+        Opens an email to {PASS_CONTACT_EMAIL}. We reply with how to pay and unlock your Pass.
       </p>
-      {error && <p className={`text-xs mt-2 text-center ${typography.color.danger}`}>{error}</p>}
     </div>
   );
 }

@@ -29,6 +29,7 @@ import {
   FREE_UNLOCK_LIMIT,
   Listing,
   SUBSCRIPTION_PRICE_NGN,
+  PASS_PRICE_NGN,
   TenantReport,
   areaName,
 } from './types';
@@ -139,7 +140,7 @@ export default function SampleReport({ profile, reports, onBack, onGetYours }: S
         </p>
         <p className={`text-xs mt-1.5 leading-relaxed ${typography.color.muted}`}>
           Launch offer: your first {FREE_UNLOCK_LIMIT} reports are free with just your email — then
-          ₦{SUBSCRIPTION_PRICE_NGN.toLocaleString()}/month for unlimited reports. Cancel anytime.
+          a Veranda Pass, ₦{PASS_PRICE_NGN.toLocaleString()} once per move, for every home on your list.
         </p>
         <button
           onClick={onGetYours}

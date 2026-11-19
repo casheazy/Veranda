@@ -406,6 +406,26 @@ export const UNLOCK_PRICE_USD_CENTS = 720;
 // subscription unlocks reports with no per-report friction.
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Veranda Pass (2026-11): one fee per move, requested by email and unlocked by
+// the team by hand until a one-time Paystack checkout is built. Replaces the
+// ₦7,000/month offer for new renters; existing subscribers keep their plan.
+// ---------------------------------------------------------------------------
+export const PASS_NAME = 'Veranda Pass';
+export const PASS_PRICE_NGN = 20000;
+export const PASS_CONTACT_EMAIL = 'hello@yourveranda.com';
+
+/** mailto: link a renter uses to request a Pass. */
+export function passRequestHref(accountEmail?: string, home?: string): string {
+  const subject = 'Veranda Pass request';
+  const body = [
+    `Hi Veranda, I'd like a ${PASS_NAME} (₦${PASS_PRICE_NGN.toLocaleString()}, once per move).`,
+    accountEmail ? `My Veranda account email: ${accountEmail}` : '',
+    home ? `Home I'm checking: ${home}` : '',
+  ].filter(Boolean).join('\n');
+  return `mailto:${PASS_CONTACT_EMAIL}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+}
+
 /** Lifetime free full-report unlocks per account (tracked in account_unlocks). */
 export const FREE_UNLOCK_LIMIT = 5;
 

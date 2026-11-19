@@ -31,6 +31,8 @@ import {
   FREE_UNLOCK_LIMIT,
   SUBSCRIPTION_PLAN_NAME,
   SUBSCRIPTION_PRICE_NGN,
+  PASS_NAME,
+  PASS_PRICE_NGN,
   areaName,
 } from './types';
 import {
@@ -476,8 +478,8 @@ export default function AccountPage({
             </div>
           ) : (
             <p className={`text-[11px] mt-2 ${typography.color.muted}`}>
-              Nothing to pay while you still have free reports. When they run out, a subscription
-              (₦{SUBSCRIPTION_PRICE_NGN.toLocaleString()}/month, cancel anytime) unlocks unlimited reports.
+              Nothing to pay while you still have free reports. When they run out, a {PASS_NAME}
+              (₦{PASS_PRICE_NGN.toLocaleString()}, once per move) covers every home on your list.
             </p>
           )}
         </div>
