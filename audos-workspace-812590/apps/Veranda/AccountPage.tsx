@@ -539,6 +539,7 @@ export default function AccountPage({
       </div>
 
       {/* Internal admin entry — discreet on purpose */}
+      {isEntrepreneur && (
       <div className="mt-6 text-center">
         <button
           onClick={onOpenAdmin}
@@ -546,9 +547,10 @@ export default function AccountPage({
           data-testid="button-open-admin"
         >
           <ShieldCheck className="w-3 h-3" />
-          {isEntrepreneur ? 'Open admin dashboard' : 'Veranda team access'}
+          Open admin dashboard
         </button>
       </div>
+      )}
     </div>
   );
 }

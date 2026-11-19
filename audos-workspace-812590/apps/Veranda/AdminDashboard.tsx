@@ -1,8 +1,8 @@
 /**
  * Veranda — internal admin dashboard (founder/team only).
  *
- * Password-gated (ADMIN_PASSWORD below — change it any time); opens without a
- * password when the space is viewed in entrepreneur mode (App Studio).
+ * Opens only when the space is viewed in entrepreneur mode (App Studio).
+ * The public site never shows it (no password lives in the page code).
  * Shows: listings count, renter accounts, free vs subscription unlock
  * breakdown, active subscribers + MRR, recent unlock activity, and a
  * tenant-report moderation panel for curating the crowd layer
@@ -22,7 +22,6 @@ import {
   Droplets,
   ExternalLink,
   FileText,
-  KeyRound,
   Loader2,
   Lock,
   Pencil,
@@ -47,9 +46,6 @@ import {
 import { WORKSPACE_ID } from './account';
 import { TRACTION_ONEPAGER_FILENAME, TRACTION_ONEPAGER_HTML } from './tractionOnepagerContent';
 
-/** Shared with the founder — rotate whenever someone leaves the team. */
-const ADMIN_PASSWORD = 'veranda-team-2026';
-const ADMIN_SESSION_KEY = 'veranda_admin_ok_v1';
 
 function StatTile({
   icon: Icon,
@@ -696,16 +692,7 @@ export default function AdminDashboard({
   isEntrepreneur: boolean;
   onBack: () => void;
 }) {
-  const [authed, setAuthed] = useState<boolean>(() => {
-    if (isEntrepreneur) return true;
-    try {
-      return sessionStorage.getItem(ADMIN_SESSION_KEY) === '1';
-    } catch {
-      return false;
-    }
-  });
-  const [password, setPassword] = useState('');
-  const [authError, setAuthError] = useState<string | null>(null);
+  const authed = isEntrepreneur;
 
   // ---- data hooks (only meaningful once authed, but hooks must run unconditionally) ----
   const listingsHook = window.useWorkspaceDB('listings', { shared: true, limit: 1 });
@@ -765,18 +752,6 @@ export default function AdminDashboard({
     };
   }, [authed]);
 
-  const tryAuth = () => {
-    if (password === ADMIN_PASSWORD) {
-      setAuthed(true);
-      setAuthError(null);
-      try {
-        sessionStorage.setItem(ADMIN_SESSION_KEY, '1');
-      } catch {}
-    } else {
-      setAuthError('Wrong password.');
-    }
-  };
-
   if (!authed) {
     return (
       <div className="pb-6 max-w-sm mx-auto">
@@ -791,27 +766,9 @@ export default function AdminDashboard({
             <Lock className={`w-5 h-5 ${tw.icon.primary}`} />
           </div>
           <p className={`text-sm ${typography.weight.semibold} ${typography.color.primary}`}>Veranda team access</p>
-          <p className={`text-xs mt-1 ${typography.color.muted}`}>Internal dashboard — password required.</p>
-          <div className="relative mt-4">
-            <KeyRound className={`absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 ${tw.icon.muted}`} />
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && tryAuth()}
-              placeholder="Team password"
-              className={`${tw.input.base} ${tw.input.default} pl-10 text-sm rounded-xl`}
-              data-testid="input-admin-password"
-            />
-          </div>
-          {authError && <p className={`text-xs mt-2 ${typography.color.danger}`}>{authError}</p>}
-          <button
-            onClick={tryAuth}
-            className={`mt-3 w-full py-3 rounded-xl text-sm ${tw.button.primary}`}
-            data-testid="button-admin-login"
-          >
-            Enter
-          </button>
+          <p className={`text-xs mt-1 ${typography.color.muted}`}>
+            The team dashboard opens from App Studio only.
+          </p>
         </div>
       </div>
     );
@@ -835,7 +792,7 @@ export default function AdminDashboard({
         <Activity className={`w-5 h-5 ${tw.icon.primary}`} />
         <div>
           <h2 className={`text-lg ${typography.weight.semibold} ${typography.color.primary}`}>Admin dashboard</h2>
-          <p className={`text-[11px] ${typography.color.muted}`}>Internal — not visible to renters without the team password.</p>
+          <p className={`text-[11px] ${typography.color.muted}`}>Internal — only visible from App Studio.</p>
         </div>
       </div>
 

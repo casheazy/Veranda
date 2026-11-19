@@ -848,7 +848,7 @@ function LandingView({
         <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/20 to-transparent" />
         <div className="absolute inset-x-0 bottom-0 p-4">
           <h1 className="text-white text-xl sm:text-2xl font-bold leading-snug drop-shadow">
-            Check the address before you hand over the rent.
+            Before you pay, Veranda checks.
           </h1>
           <p className="text-white/85 text-xs sm:text-sm mt-1 drop-shadow">
             Type any Lagos address or area to check flood, power, network, security and your commute
