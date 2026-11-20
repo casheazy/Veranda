@@ -1469,22 +1469,33 @@ export default function EmailGate({
         {tagline || 'Truth before you move in.'}
       </p>
       <h1 className="mx-auto max-w-2xl text-[2rem] font-extrabold leading-[1.12] tracking-tight sm:text-5xl sm:leading-[1.08] md:text-[3.4rem]" style={{ color: '#ffffff', fontFamily: headingFontStack }}>
-        Find your next Lagos home. Know what you’re getting into before you sign.
+        Before you pay, Veranda checks.
       </h1>
       <p className="mx-auto mt-5 max-w-xl text-base leading-relaxed sm:text-lg" style={{ color: 'rgba(255,255,255,0.88)' }}>
-        Browse real, current listings — pulled fresh every day from Nigeria’s top property portals — then verify the flood risk, the power reliability, the network coverage, the security situation, and the commute on the one you love, before any money changes hands.
+        Check flood risk, power, network, security and your commute for any Lagos home, before you visit or pay.
       </p>
 
       <div className="mt-8 flex flex-col items-center justify-center gap-3">
         <button data-testid="button-open-login" onClick={openLogin} className="group inline-flex w-full max-w-xs items-center justify-center gap-2 rounded-full px-8 py-4 text-base font-bold transition-transform hover:scale-[1.02] sm:w-auto sm:max-w-none" style={{ backgroundColor: primaryColor, color: readableTextColor(primaryColor), boxShadow: `0 14px 40px ${colorWithAlpha(primaryColor, 0.45)}` }}>
-          Browse Lagos Listings
+          Check a home
           <ArrowRight size={18} className="transition-transform group-hover:translate-x-1" />
+        </button>
+        <button
+          data-testid="button-landing-sample"
+          onClick={() => {
+            try { sessionStorage.setItem('veranda_open_view', 'sample'); } catch {}
+            openLogin();
+          }}
+          className="inline-flex w-full max-w-xs items-center justify-center gap-2 rounded-full px-8 py-3.5 text-sm font-bold transition-transform hover:scale-[1.02] sm:w-auto sm:max-w-none"
+          style={{ backgroundColor: 'rgba(255,255,255,0.12)', border: '1px solid rgba(255,255,255,0.4)', color: '#ffffff' }}
+        >
+          See a sample report
         </button>
       </div>
 
       <div className="mx-auto mt-8 w-full max-w-md rounded-2xl p-4 text-left sm:p-5" style={{ backgroundColor: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.18)', backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)' }}>
         <p className="mb-3 text-xs font-semibold sm:text-sm" style={{ color: 'rgba(255,255,255,0.85)' }}>
-          Not ready to search yet? Drop your email and we’ll keep you posted.
+          Start with your email. It’s free, and your first 5 reports are on us.
         </p>
         <div className="flex flex-col gap-2 sm:flex-row">
           <input
@@ -1498,7 +1509,7 @@ export default function EmailGate({
             data-testid="input-hero-email"
           />
           <button onClick={openLogin} className="shrink-0 rounded-full px-6 py-3 text-sm font-bold transition-transform hover:scale-[1.03]" style={{ backgroundColor: '#ffffff', color: textPrimary }}>
-            Keep me posted
+            Sign up free
           </button>
         </div>
       </div>
@@ -1513,7 +1524,7 @@ export default function EmailGate({
     <div className="mx-auto max-w-3xl">
       <p className="mb-6 text-[11px] font-bold uppercase tracking-[0.28em] sm:text-xs" style={{ color: 'rgba(255,255,255,0.45)' }}>Sound familiar?</p>
       <h2 className="text-2xl font-extrabold leading-snug tracking-tight sm:text-3xl md:text-4xl md:leading-[1.25]" style={{ color: '#ffffff', fontFamily: headingFontStack }}>
-        Paying 3, 4, 5 different agents just to get access to listings. Driving across Lagos to see houses that looked nothing like the photos. Wasting weekends on properties that weren’t worth the stress — and still not knowing about the flooding, the power situation, or the security until after you’ve signed.
+        Paying agent after agent just to see homes. Driving across Lagos to houses that look nothing like the photos. Then finding out about the flooding and the power after you’ve paid.
       </h2>
       <p className="mt-6 text-2xl font-extrabold tracking-tight sm:text-3xl md:text-4xl" style={{ color: palette?.highlightScale?.['200'] || highlightColor, fontFamily: headingFontStack }}>
         Veranda fixes that.
@@ -1524,46 +1535,8 @@ export default function EmailGate({
           “By the time you find out, it’s too late to walk away.”
         </p>
         <p className="mt-3 text-sm leading-relaxed sm:text-base" style={{ color: 'rgba(255,255,255,0.65)' }}>
-          The rent is paid. The agents have moved on. And you’re the one left with the flooded street, the darkness, and the commute you never planned for. Veranda exists so you find out first — while walking away still costs you nothing.
+          The rent is paid and the agents have moved on. Veranda helps you find out first, while walking away still costs nothing.
         </p>
-      </div>
-    </div>
-  </section>
-
-  <section className="px-5 py-20 sm:px-6 md:py-28" style={{ backgroundColor: pageBackground }}>
-    <div className="mx-auto grid max-w-6xl items-center gap-10 md:grid-cols-2 md:gap-16">
-      <div className="overflow-hidden rounded-3xl" style={{ border: `1px solid ${borderColor}`, boxShadow: `0 30px 60px ${colorWithAlpha(primaryColor, 0.16)}` }}>
-        <img
-          src={VERANDA_IMAGE_URL}
-          alt="A calm veranda overlooking a leafy Lagos street at golden hour"
-          className="h-full w-full object-cover"
-          style={{ aspectRatio: '4 / 3' }}
-          loading="lazy"
-        />
-      </div>
-      <div>
-        <p className="mb-4 text-[11px] font-bold uppercase tracking-[0.28em] sm:text-xs" style={{ color: textSubtle }}>Why “Veranda”</p>
-        <h2 className="text-2xl font-extrabold leading-tight tracking-tight sm:text-3xl md:text-4xl" style={{ color: textPrimary, fontFamily: headingFontStack }}>
-          The name is the promise.
-        </h2>
-        <p className="mt-4 text-base leading-relaxed sm:text-lg" style={{ color: textMuted }}>
-          Imagine chilling at your veranda, soaking in the atmosphere of a great home you just rented or bought — this is what we’re building.
-        </p>
-        <div className="mt-8 space-y-6">
-          {[
-            { n: '01', title: 'Find', desc: 'See what’s actually available in the areas you want — without paying agent after agent just to look.' },
-            { n: '02', title: 'Verify', desc: 'Get the truth about the property and the street before your money leaves your hands.' },
-            { n: '03', title: 'Settle', desc: 'Move in knowing exactly what to expect — and actually enjoy the home you chose.' },
-          ].map((item) => (
-            <div key={item.title} className="flex items-start gap-4">
-              <span className="mt-1 text-xs font-extrabold tracking-widest" style={{ color: primaryColor }}>{item.n}</span>
-              <div>
-                <h3 className="text-base font-extrabold sm:text-lg" style={{ color: textPrimary, fontFamily: headingFontStack }}>{item.title}</h3>
-                <p className="mt-1 text-sm leading-relaxed sm:text-base" style={{ color: textMuted }}>{item.desc}</p>
-              </div>
-            </div>
-          ))}
-        </div>
       </div>
     </div>
   </section>
@@ -1635,11 +1608,11 @@ export default function EmailGate({
       <div className="mx-auto max-w-2xl text-center">
         <p className="mb-4 text-[11px] font-bold uppercase tracking-[0.28em] sm:text-xs" style={{ color: textSubtle }}>Pricing</p>
         <h2 className="text-2xl font-extrabold leading-tight tracking-tight sm:text-3xl md:text-4xl" style={{ color: textPrimary, fontFamily: headingFontStack }}>
-          Less than one agent fee — and it tells you more than all of them combined.
+          Less than paying two agents, and it tells you more than all of them combined.
         </h2>
         <p className="mx-auto mt-4 max-w-lg text-base leading-relaxed sm:text-lg" style={{ color: textMuted }}>
-          Browse for free — and your first 5 full reports are free too. After that, one simple
-          monthly plan unlocks unlimited reports.
+          Browse for free, and your first 5 full reports are free too. After that, one Veranda Pass
+          covers every home on your list, once per move.
         </p>
       </div>
 
