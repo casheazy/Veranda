@@ -636,7 +636,7 @@ function AtAGlance({
   dataAsOf,
 }: {
   address: string;
-  rows: { label: string; value: string; tone: BadgeTone }[];
+  rows: { label: string; value: string; tone: BadgeTone; pill?: string }[];
   dataAsOf: string | null;
 }) {
   const shareText = [
@@ -651,14 +651,16 @@ function AtAGlance({
   return (
     <div className={`${tw.card.default} rounded-2xl p-4`} data-testid="card-at-a-glance">
       <p className={`text-[10px] uppercase tracking-wide ${typography.color.muted}`}>At a glance</p>
-      <ul className="mt-2 space-y-2">
+      <ul className="mt-1 divide-y divide-[var(--space-border-default)]">
         {rows.map((r) => (
-          <li key={r.label} className="flex items-center justify-between gap-3">
+          <li key={r.label} className="flex items-center justify-between gap-3 py-2.5">
             <span className="min-w-0">
-              <span className={`text-xs ${typography.color.muted}`}>{r.label} · </span>
-              <span className={`text-sm ${typography.weight.semibold} ${typography.color.primary}`}>{r.value}</span>
+              <span className={`block text-[11px] ${typography.color.muted}`}>{r.label}</span>
+              <span className={`block text-sm leading-snug ${typography.weight.semibold} ${typography.color.primary}`}>
+                {r.value}
+              </span>
             </span>
-            <Pill tone={r.tone} />
+            <Pill tone={r.tone} label={r.pill} />
           </li>
         ))}
       </ul>
@@ -1478,10 +1480,21 @@ export default function ReportView({
   const routeDistanceKm = commute?.distanceKm ?? transitDistanceKm ?? drivingDistanceKm;
   const modeTags = commuteModes(transitSteps, transitMinutes == null);
 
-  const glanceRows: { label: string; value: string; tone: BadgeTone }[] = [
+  // Short, phone-friendly verdicts; the full headlines stay on the cards below.
+  const powerBand = (profile?.disco_band || '').trim().toUpperCase();
+  const powerShort = powerBand
+    ? `Band ${powerBand}${profile?.band_hours_min ? ` · ${profile.band_hours_min}+ hrs a day` : ''}`
+    : power.headline;
+  const NETWORK_SHORT: Record<BadgeTone, string> = {
+    good: 'Strong on most networks',
+    fair: 'Mixed: pick your network',
+    watch: 'Weak signal here',
+    improving: 'Not measured yet',
+  };
+  const glanceRows: { label: string; value: string; tone: BadgeTone; pill?: string }[] = [
     { label: 'Flood', value: flood.headline, tone: flood.tone },
-    { label: 'Power', value: power.headline, tone: power.tone },
-    { label: 'Network', value: coverageInfo.headline, tone: coverageInfo.tone },
+    { label: 'Power', value: powerShort, tone: power.tone },
+    { label: 'Network', value: NETWORK_SHORT[coverageInfo.tone], tone: coverageInfo.tone },
     commute
       ? {
           label: destinationLabel ? `Commute to ${destinationLabel}` : 'Commute',
@@ -1491,7 +1504,7 @@ export default function ReportView({
               : `${commute.driveMinutes} min drive`,
           tone: commuteTone(commute.driveMinutes),
         }
-      : { label: 'Commute', value: 'Add where you commute to, below', tone: 'improving' as BadgeTone },
+      : { label: 'Commute', value: 'Add your work address below', tone: 'improving' as BadgeTone, pill: 'To add' },
   ];
   const dataAsOf = formatMonthYear((profile as any)?.updated_at) || formatMonthYear((profile as any)?.created_at);
 
