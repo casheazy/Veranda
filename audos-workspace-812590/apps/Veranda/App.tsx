@@ -895,14 +895,13 @@ function LandingView({
           alt="Warm illustration of a Lagos residential street"
           className="w-full h-44 sm:h-56 object-cover"
         />
-        <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/20 to-transparent" />
+        <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/45 to-black/10" />
         <div className="absolute inset-x-0 bottom-0 p-4">
           <h1 className="text-white text-xl sm:text-2xl font-bold leading-snug drop-shadow">
             Before you pay, Veranda checks.
           </h1>
           <p className="text-white/85 text-xs sm:text-sm mt-1 drop-shadow">
-            Type any Lagos address or area to check flood, power, network, security and your commute
-            — before you pay, not the July after.
+            Flood, power, network, security and your commute, for any Lagos address.
           </p>
         </div>
       </div>
@@ -917,7 +916,7 @@ function LandingView({
               value={query}
               onChange={(e) => onQueryChange(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && onVerify()}
-              placeholder="Enter an address or area — e.g. 12 Bode Thomas, Surulere"
+              placeholder="Address or area, e.g. Bode Thomas"
               className={`${tw.input.base} ${tw.input.default} pl-10 text-sm rounded-xl`}
               data-testid="input-home-search"
             />
@@ -956,12 +955,12 @@ function LandingView({
         </button>
 
         <p className={`text-[11px] mt-2.5 ${typography.color.muted}`}>Or start from a covered area:</p>
-        <div className="flex gap-1.5 mt-1.5 flex-wrap">
+        <div className="flex gap-1.5 mt-1.5 overflow-x-auto pb-1 -mx-4 px-4 sm:mx-0 sm:px-0 sm:flex-wrap sm:overflow-visible [scrollbar-width:none]">
           {POPULAR_AREAS.map((key) => (
             <button
               key={key}
               onClick={() => onPickArea(key)}
-              className={`px-2.5 py-1.5 rounded-full text-xs border bg-[var(--space-surface-card)] border-[var(--space-border-default)] ${typography.color.secondary} hover:bg-[var(--space-surface-card-hover)] transition-colors`}
+              className={`shrink-0 whitespace-nowrap px-3 py-1.5 rounded-full text-xs border bg-[var(--space-surface-card)] border-[var(--space-border-default)] ${typography.color.secondary} hover:bg-[var(--space-surface-card-hover)] transition-colors`}
               data-testid={`home-area-${key}`}
             >
               {areaName(key)}
@@ -972,7 +971,7 @@ function LandingView({
 
       {/* What a report actually contains */}
       <p className={`text-xs mt-5 mb-2 ${typography.weight.semibold} ${typography.color.primary}`}>
-        Every report shows all five checks — starting with the two renters ask about most
+        What every report checks
       </p>
       <div className="grid sm:grid-cols-2 gap-3">
         <div className={`${tw.card.default} rounded-2xl p-4`}>

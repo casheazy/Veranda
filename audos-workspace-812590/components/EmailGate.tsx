@@ -1450,7 +1450,7 @@ export default function EmailGate({
         <a href="#coverage" className="transition-opacity hover:opacity-70">Coverage</a>
       </div>
       <button onClick={openLogin} className="rounded-full px-4 py-2 text-sm font-bold transition-transform hover:scale-[1.03] sm:px-5" style={{ backgroundColor: primaryColor, color: readableTextColor(primaryColor), boxShadow: `0 8px 20px ${colorWithAlpha(primaryColor, 0.3)}` }}>
-        View Listings
+        Check a home
       </button>
     </div>
   </nav>

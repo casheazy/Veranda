@@ -312,7 +312,7 @@ export default function AgentChatView({ runtime }: AgentChatViewProps) {
       ? shouldShowBeaconIntake
         ? 'We can keep building from your starter plan, or you can tell me what changed...'
         : "Tell me what happened, or what you're worried about..."
-      : 'Ask me anything... (paste or drop images here)';
+      : 'Ask about any Lagos address or area…';
 
   const visibleMessages = messages.filter(
     (m) => !(m.role === 'user' && typeof m.content === 'string' && m.content.startsWith('[SYSTEM:')),
@@ -656,7 +656,9 @@ export default function AgentChatView({ runtime }: AgentChatViewProps) {
                     ? msg.role === 'assistant'
                       ? 'Beacon'
                       : 'You'
-                    : msg.role.charAt(0).toUpperCase() + msg.role.slice(1)}
+                    : msg.role === 'assistant'
+                      ? 'Veranda'
+                      : 'You'}
                 </p>
 
                 {msg.role === 'user' && msg.attachments && msg.attachments.length > 0 && (
@@ -799,7 +801,7 @@ export default function AgentChatView({ runtime }: AgentChatViewProps) {
         <div className="mx-auto w-full max-w-3xl">
         {composerElement}
 
-        <p className="text-[10px] text-[var(--space-text-muted)] mt-1.5 text-center leading-tight">
+        <p className="hidden sm:block text-[10px] text-[var(--space-text-muted)] mt-1.5 text-center leading-tight">
           {shortcutPrefix}+Enter to send
         </p>
         </div>
