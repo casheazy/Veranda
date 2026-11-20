@@ -53,6 +53,8 @@ import {
   PlusCircle,
   RefreshCw,
   AlertTriangle,
+  MessageCircle,
+  Share2,
 } from 'lucide-react';
 import { tw, typography } from '../../lib/colors';
 import {
@@ -95,7 +97,7 @@ const TONE_META: Record<BadgeTone, { label: string; cls: string }> = {
   },
 };
 
-function Pill({ tone, label }: { tone: BadgeTone; label?: string }) {
+export function Pill({ tone, label }: { tone: BadgeTone; label?: string }) {
   return (
     <span
       className={`shrink-0 px-2.5 py-0.5 rounded-full text-[11px] ${typography.weight.semibold} ${TONE_META[tone].cls}`}
@@ -267,7 +269,7 @@ function identifyDisco(address: string, areaKey: AreaKey): DiscoId | null {
 // Plain-language derivations from the verified lookups
 // ---------------------------------------------------------------------------
 
-function floodPresentation(profile?: AreaProfile): { tone: BadgeTone; headline: string; detail: string | null } {
+export function floodPresentation(profile?: AreaProfile): { tone: BadgeTone; headline: string; detail: string | null } {
   if (!profile?.flood_zone_class) {
     return {
       tone: 'improving',
@@ -287,7 +289,7 @@ function floodPresentation(profile?: AreaProfile): { tone: BadgeTone; headline: 
   return { tone, headline, detail: firstSentence(profile.flood_summary) || profile.flood_zone_label || null };
 }
 
-function powerPresentation(
+export function powerPresentation(
   profile: AreaProfile | undefined,
   tenantAvgHours: number | null,
   tenantReportCount: number
@@ -617,6 +619,75 @@ function LocationMap({ areaKey, address }: { areaKey: AreaKey; address: string }
 // ---------------------------------------------------------------------------
 // Dimension card — the shared anatomy of the five report cards
 // ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// At a glance — the one-screen verdict at the top of every unlocked report
+// ---------------------------------------------------------------------------
+
+function formatMonthYear(raw: unknown): string | null {
+  if (typeof raw !== 'string' || !raw) return null;
+  const d = new Date(raw);
+  return isNaN(d.getTime()) ? null : d.toLocaleDateString(undefined, { month: 'short', year: 'numeric' });
+}
+
+function AtAGlance({
+  address,
+  rows,
+  dataAsOf,
+}: {
+  address: string;
+  rows: { label: string; value: string; tone: BadgeTone }[];
+  dataAsOf: string | null;
+}) {
+  const shareText = [
+    `Veranda check: ${address}`,
+    ...rows.map((r) => `• ${r.label}: ${r.value}`),
+    'Before you pay, Veranda checks: https://yourveranda.com',
+  ].join('\n');
+  const shareHref = `https://wa.me/?text=${encodeURIComponent(shareText)}`;
+  const jumpToChat = () => {
+    document.getElementById('ask-veranda')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+  return (
+    <div className={`${tw.card.default} rounded-2xl p-4`} data-testid="card-at-a-glance">
+      <p className={`text-[10px] uppercase tracking-wide ${typography.color.muted}`}>At a glance</p>
+      <ul className="mt-2 space-y-2">
+        {rows.map((r) => (
+          <li key={r.label} className="flex items-center justify-between gap-3">
+            <span className="min-w-0">
+              <span className={`text-xs ${typography.color.muted}`}>{r.label} · </span>
+              <span className={`text-sm ${typography.weight.semibold} ${typography.color.primary}`}>{r.value}</span>
+            </span>
+            <Pill tone={r.tone} />
+          </li>
+        ))}
+      </ul>
+      <p className={`text-[11px] mt-2.5 ${typography.color.muted}`}>
+        Flood and power are area-level{dataAsOf ? `, last updated ${dataAsOf}` : ''}. Walk the street yourself before you sign.
+      </p>
+      <div className="mt-3 grid grid-cols-2 gap-2">
+        <button
+          onClick={jumpToChat}
+          className={`py-2.5 rounded-xl text-xs flex items-center justify-center gap-1.5 ${tw.button.primary}`}
+          data-testid="button-jump-to-chat"
+        >
+          <MessageCircle className="w-3.5 h-3.5" aria-hidden="true" />
+          Ask about this home
+        </button>
+        <a
+          href={shareHref}
+          target="_blank"
+          rel="noreferrer"
+          className={`py-2.5 rounded-xl text-xs flex items-center justify-center gap-1.5 ${tw.button.secondary}`}
+          data-testid="button-share-whatsapp"
+        >
+          <Share2 className="w-3.5 h-3.5" aria-hidden="true" />
+          Share on WhatsApp
+        </a>
+      </div>
+    </div>
+  );
+}
 
 function DimensionCard({
   testId,
@@ -1407,8 +1478,27 @@ export default function ReportView({
   const routeDistanceKm = commute?.distanceKm ?? transitDistanceKm ?? drivingDistanceKm;
   const modeTags = commuteModes(transitSteps, transitMinutes == null);
 
+  const glanceRows: { label: string; value: string; tone: BadgeTone }[] = [
+    { label: 'Flood', value: flood.headline, tone: flood.tone },
+    { label: 'Power', value: power.headline, tone: power.tone },
+    { label: 'Network', value: coverageInfo.headline, tone: coverageInfo.tone },
+    commute
+      ? {
+          label: destinationLabel ? `Commute to ${destinationLabel}` : 'Commute',
+          value:
+            transitMinutes != null
+              ? `~${transitMinutes} min by public transport · ${commute.driveMinutes} min drive`
+              : `${commute.driveMinutes} min drive`,
+          tone: commuteTone(commute.driveMinutes),
+        }
+      : { label: 'Commute', value: 'Add where you commute to, below', tone: 'improving' as BadgeTone },
+  ];
+  const dataAsOf = formatMonthYear((profile as any)?.updated_at) || formatMonthYear((profile as any)?.created_at);
+
   return (
     <div className="space-y-3" data-testid="report-unlocked">
+      <AtAGlance address={address} rows={glanceRows} dataAsOf={dataAsOf} />
+
       {/* ------------------------- 1 · LOCATION MAP ------------------------- */}
       <LocationMap areaKey={areaKey} address={address} />
 

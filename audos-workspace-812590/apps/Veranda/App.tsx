@@ -36,6 +36,7 @@ import {
   Ticket,
   Wallet,
   Zap,
+  Heart,
 } from 'lucide-react';
 import { tw, typography } from '../../lib/colors';
 import { useSpaceRuntime } from '../../SpaceRuntimeContext';
@@ -90,13 +91,14 @@ import SubmitReport from './SubmitReport';
 import SampleReport, { SAMPLE_AREA_KEY } from './SampleReport';
 import AccountPage from './AccountPage';
 import AdminDashboard from './AdminDashboard';
+import ShortlistView from './ShortlistView';
 
 const HERO_IMAGE_URL =
   'https://storage.googleapis.com/audos-images/generated-images/agent/workspace-812590/img-1785716590484-tjvxme.png';
 
 const POPULAR_AREAS: AreaKey[] = ['lekki', 'ajah', 'yaba', 'surulere', 'ikeja', 'victoria-island'];
 
-type View = 'home' | 'browse' | 'verify' | 'submit' | 'account' | 'admin' | 'sample';
+type View = 'home' | 'browse' | 'verify' | 'submit' | 'account' | 'admin' | 'sample' | 'list';
 
 interface AreaReportTarget {
   areaKey: AreaKey;
@@ -646,13 +648,29 @@ export default function VerandaApp() {
     setView(v);
   };
 
+  // The public landing page's "See a sample report" button leaves a one-time
+  // note so the app opens straight on the sample after sign-in.
+  useEffect(() => {
+    try {
+      if (sessionStorage.getItem('veranda_open_view') === 'sample') {
+        sessionStorage.removeItem('veranda_open_view');
+        setView('sample');
+      }
+    } catch {
+      /* storage blocked — open on home as usual */
+    }
+  }, []);
+
   // The unified shell header (Desktop.tsx) renders the Veranda logo as a
   // dropdown-menu trigger; its items navigate this app by dispatching the
   // `audos:app-navigate` window event with a target view.
   useEffect(() => {
     const onNavigate = (e: Event) => {
       const target = (e as CustomEvent).detail?.target as View | undefined;
-      if (target !== 'home' && target !== 'browse' && target !== 'submit' && target !== 'account') {
+      if (
+        target !== 'home' && target !== 'browse' && target !== 'submit' && target !== 'account' &&
+        target !== 'list' && target !== 'sample'
+      ) {
         return;
       }
       setDetailListing(null);
@@ -784,6 +802,12 @@ export default function VerandaApp() {
             onOpenUnlock={openFromHistory}
             onOpenAdmin={() => setView('admin')}
           />
+        ) : view === 'list' ? (
+          <ShortlistView
+            profileFor={profileFor}
+            onOpen={(l) => setDetailListing(l)}
+            onBrowse={() => setView('browse')}
+          />
         ) : view === 'admin' ? (
           <AdminDashboard isEntrepreneur={isEntrepreneur} onBack={() => setView('account')} />
         ) : (
@@ -810,10 +834,11 @@ export default function VerandaApp() {
           #FAF7F2) with a top border + soft shadow lifting it off content. */}
       {!detailListing && view !== 'admin' && (
         <div className="shrink-0 sticky bottom-0 border-t border-[var(--space-border-strong)] bg-[var(--space-surface-page)] shadow-[0_-4px_12px_rgba(45,31,22,0.08)]">
-          <div className="grid grid-cols-4">
+          <div className="grid grid-cols-5">
             {[
               { key: 'home' as View, label: 'Verify', icon: ShieldCheck },
               { key: 'browse' as View, label: 'Browse', icon: Search },
+              { key: 'list' as View, label: 'My list', icon: Heart },
               { key: 'submit' as View, label: 'Report', icon: PlusCircle },
               { key: 'account' as View, label: 'Account', icon: UserRound },
             ].map(({ key, label, icon: Icon }) => (

@@ -16,6 +16,7 @@ import {
   ShieldCheck,
   Sofa,
   Camera,
+  Heart,
 } from 'lucide-react';
 import { tw, typography } from '../../lib/colors';
 import {
@@ -39,6 +40,7 @@ import type { CommuteDestination } from './account';
 import ReportGate from './ReportGate';
 import ReportView from './ReportView';
 import ReportChat from './ReportChat';
+import { toggleShortlist, useShortlist } from './shortlist';
 
 const PORTAL_LABELS: Record<string, string> = {
   propertypro: 'propertypro.ng',
@@ -207,6 +209,17 @@ export default function ListingDetail({
   const description = cleanScrapedText(listing.description);
   const features = asArray<string>(listing.features);
   const portal = PORTAL_LABELS[(listing.source_portal || '').toLowerCase()] || listing.source_portal;
+  const shortlist = useShortlist();
+  const saved = shortlist.some((l) => l.id === listing.id);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const onToggleSave = () => {
+    setSaveError(null);
+    try {
+      toggleShortlist(listing);
+    } catch (e) {
+      setSaveError(e instanceof Error ? e.message : 'Could not save this home.');
+    }
+  };
 
   return (
     <div className="pb-6">
@@ -226,6 +239,16 @@ export default function ListingDetail({
           </div>
 
           <div className="mt-3.5">
+            <button
+              onClick={onToggleSave}
+              aria-pressed={saved}
+              className={`mb-3 px-3.5 py-2 rounded-xl text-xs inline-flex items-center gap-1.5 ${saved ? tw.button.primary : tw.button.secondary}`}
+              data-testid="button-save-to-list"
+            >
+              <Heart className="w-3.5 h-3.5" aria-hidden="true" fill={saved ? 'currentColor' : 'none'} />
+              {saved ? 'Saved to my list' : 'Save to my list'}
+            </button>
+            {saveError && <p className={`text-xs mb-2 ${typography.color.danger}`}>{saveError}</p>}
             {rent > 0 ? (
               <p className={`text-2xl leading-tight ${typography.weight.bold} ${typography.color.brand}`} data-testid="detail-price">
                 {naira(rent)}

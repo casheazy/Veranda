@@ -182,7 +182,7 @@ export default function ReportChat({
   };
 
   return (
-    <div className={`${tw.card.default} rounded-2xl overflow-hidden`} data-testid="report-chat">
+    <div id="ask-veranda" className={`${tw.card.default} rounded-2xl overflow-hidden scroll-mt-4`} data-testid="report-chat">
       <div className={`px-4 py-3 border-b border-[var(--space-border-default)] ${tw.bg.accent} flex items-center gap-2`}>
         <MessageCircleQuestion className={`w-4 h-4 ${tw.icon.primary}`} />
         <div>

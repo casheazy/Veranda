@@ -248,7 +248,9 @@ export function SubscribeCard({
   compact?: boolean;
 }) {
   // Pass requests go to the team by email; payment is taken by hand for now.
+  const [sent, setSent] = useState(false);
   const requestPass = () => {
+    setSent(true);
     window.location.href = passRequestHref(email, listing?.title || address);
   };
 
@@ -302,6 +304,12 @@ export function SubscribeCard({
       <p className={`text-[10px] mt-2 text-center ${typography.color.muted}`}>
         Opens an email to {PASS_CONTACT_EMAIL}. We reply with how to pay and unlock your Pass.
       </p>
+      {sent && (
+        <p className={`text-xs mt-2 text-center ${typography.color.success}`} role="status" data-testid="pass-request-sent">
+          We’ve opened an email for you. If nothing opened, email {PASS_CONTACT_EMAIL} with your account email,
+          and we’ll reply within a few hours.
+        </p>
+      )}
     </div>
   );
 }
